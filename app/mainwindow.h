@@ -2,6 +2,9 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QString>
+
+class UciClient;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -18,6 +21,10 @@ public:
     ~MainWindow();
 
 private:
+    void configureEngine();
+
     Ui::MainWindow *ui;
+    UciClient *m_uciClient;
+    QString m_enginePath;
 };
 #endif // MAINWINDOW_H
