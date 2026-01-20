@@ -29,21 +29,27 @@
      <height>21</height>
     </rect>
    </property>
-   <widget class="QMenu" name="menuEngine">
+   <widget class="QMenu" name="menuPlay">
     <property name="title">
-     <string>Engine</string>
+     <string>Play</string>
     </property>
-    <addaction name="actionConfigureEngine"/>
+    <addaction name="actionSingleGame"/>
+    <addaction name="actionTournament"/>
    </widget>
-   <addaction name="menuEngine"/>
+   <addaction name="menuPlay"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
-  <action name="actionConfigureEngine">
+  <action name="actionSingleGame">
    <property name="text">
-    <string>Configure Engine...</string>
+    <string>Single game</string>
    </property>
-   <property name="shortcut">
-    <string>Ctrl+E</string>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionTournament">
+   <property name="text">
+    <string>Tournament</string>
    </property>
    <property name="menuRole">
     <enum>QAction::NoRole</enum>
