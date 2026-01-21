@@ -5,7 +5,10 @@
 #include "tournament_dialog.h"
 #include "uci_client.h"
 
+#include "fen.h"
+
 #include <QAction>
+#include <QMessageBox>
 #include <QString>
 
 #include <string>
@@ -33,34 +36,26 @@ MainWindow::MainWindow(QWidget *parent)
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
 
-    const auto applyMatchConfig = [this](const MatchConfig& config) {
-        if (!ui || !ui->widget) {
-            return;
-        }
-        const std::string fen = resolveStartFen(config.game);
-        ui->widget->setFromFenString(fen);
-    };
-
     if (ui->actionSingleGame) {
-        connect(ui->actionSingleGame, &QAction::triggered, this, [this, applyMatchConfig]() {
+        connect(ui->actionSingleGame, &QAction::triggered, this, [this]() {
             SingleGameDialog dialog(this);
             if (dialog.exec() == QDialog::Accepted) {
                 const MatchConfig config = dialog.config();
                 m_state.lastMatch = config;
                 m_state.hasLastMatch = true;
-                applyMatchConfig(config);
+                startMatch(config);
             }
         });
     }
 
     if (ui->actionTournament) {
-        connect(ui->actionTournament, &QAction::triggered, this, [this, applyMatchConfig]() {
+        connect(ui->actionTournament, &QAction::triggered, this, [this]() {
             TournamentDialog dialog(this);
             if (dialog.exec() == QDialog::Accepted) {
                 const TournamentConfig config = dialog.config();
                 m_state.lastTournament = config;
                 m_state.hasLastTournament = true;
-                applyMatchConfig(config.match);
+                startMatch(config.match);
             }
         });
     }
@@ -69,4 +64,24 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+bool MainWindow::startMatch(const MatchConfig& config)
+{
+    if (!ui || !ui->widget) {
+        return false;
+    }
+
+    const std::string fen = resolveStartFen(config.game);
+    Position position;
+    if (!setFromFen(position, fen)) {
+        QMessageBox::warning(this, tr("Invalid start position"),
+                             tr("Start position is not a valid FEN."));
+        return false;
+    }
+
+    m_state.currentPosition = position;
+    m_state.hasCurrentPosition = true;
+    ui->widget->setPosition(position);
+    return true;
 }

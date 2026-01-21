@@ -24,6 +24,7 @@ public:
 
 private:
     void configureEngine();
+    bool startMatch(const MatchConfig& config);
 
     Ui::MainWindow *ui;
     UciClient *m_uciClient;
