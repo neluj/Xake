@@ -6,6 +6,24 @@
 #include "uci_client.h"
 
 #include <QAction>
+#include <QString>
+
+#include <string>
+
+namespace {
+
+const char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+std::string resolveStartFen(const GameConfig& gameConfig)
+{
+    const QString start = gameConfig.startPosition.trimmed();
+    if (start.compare(QStringLiteral("startpos"), Qt::CaseInsensitive) == 0) {
+        return std::string(kStartFen);
+    }
+    return start.toStdString();
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -15,17 +33,29 @@ MainWindow::MainWindow(QWidget *parent)
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
 
+    const auto applyMatchConfig = [this](const MatchConfig& config) {
+        if (!ui || !ui->widget) {
+            return;
+        }
+        const std::string fen = resolveStartFen(config.game);
+        ui->widget->setFromFenString(fen);
+    };
+
     if (ui->actionSingleGame) {
-        connect(ui->actionSingleGame, &QAction::triggered, this, [this]() {
+        connect(ui->actionSingleGame, &QAction::triggered, this, [this, applyMatchConfig]() {
             SingleGameDialog dialog(this);
-            dialog.exec();
+            if (dialog.exec() == QDialog::Accepted) {
+                applyMatchConfig(dialog.config());
+            }
         });
     }
 
     if (ui->actionTournament) {
-        connect(ui->actionTournament, &QAction::triggered, this, [this]() {
+        connect(ui->actionTournament, &QAction::triggered, this, [this, applyMatchConfig]() {
             TournamentDialog dialog(this);
-            dialog.exec();
+            if (dialog.exec() == QDialog::Accepted) {
+                applyMatchConfig(dialog.config().match);
+            }
         });
     }
 }

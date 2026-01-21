@@ -9,6 +9,7 @@ enum class ValidationError {
     MissingEnginePlayer1,
     MissingEnginePlayer2,
     MissingStartPosition,
+    InvalidStartPosition,
     InvalidRounds,
     InvalidGamesPerPairing
 };

@@ -49,7 +49,8 @@ void TournamentDialog::accept()
     normalizeTournamentConfig(config);
     const ValidationError error = validateTournamentConfig(config);
     if (error != ValidationError::None) {
-        QMessageBox::warning(this, validationErrorTitle(error), validationErrorMessage(error));
+        QMessageBox::warning(this, validationErrorTitle(error),
+                             validationErrorMessage(error));
         return;
     }
 

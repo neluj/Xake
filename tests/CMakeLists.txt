@@ -12,6 +12,6 @@ add_executable(match_settings_tests
 )
 
 target_include_directories(match_settings_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
-target_link_libraries(match_settings_tests PRIVATE Qt6::Test)
+target_link_libraries(match_settings_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME match_settings_tests COMMAND match_settings_tests)

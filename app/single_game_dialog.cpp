@@ -37,7 +37,8 @@ void SingleGameDialog::accept()
     normalizeMatchConfig(config);
     const ValidationError error = validateMatchConfig(config);
     if (error != ValidationError::None) {
-        QMessageBox::warning(this, validationErrorTitle(error), validationErrorMessage(error));
+        QMessageBox::warning(this, validationErrorTitle(error),
+                             validationErrorMessage(error));
         return;
     }
 

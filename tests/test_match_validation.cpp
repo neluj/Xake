@@ -11,6 +11,7 @@ private slots:
     void validateMissingHumanName();
     void validateMissingEngine();
     void validateMissingStartPosition();
+    void validateInvalidFen();
     void validateTournamentFields();
     void validMatchConfig();
 };
@@ -39,7 +40,8 @@ void TestMatchValidation::validateMissingHumanName()
     config.game.useStartPos = true;
     config.game.startPosition = "startpos";
 
-    QCOMPARE(validateMatchConfig(config), ValidationError::MissingHumanNamePlayer1);
+    const ValidationError error = validateMatchConfig(config);
+    QCOMPARE(error, ValidationError::MissingHumanNamePlayer1);
 }
 
 void TestMatchValidation::validateMissingEngine()
@@ -69,6 +71,20 @@ void TestMatchValidation::validateMissingStartPosition()
     QCOMPARE(error, ValidationError::MissingStartPosition);
 }
 
+void TestMatchValidation::validateInvalidFen()
+{
+    MatchConfig config;
+    config.player1.type = PlayerType::Human;
+    config.player1.name = "Human 1";
+    config.player2.type = PlayerType::Human;
+    config.player2.name = "Human 2";
+    config.game.useStartPos = false;
+    config.game.startPosition = "8/8/8/8/8/8/8/9 w - - 0 1";
+
+    const ValidationError error = validateMatchConfig(config);
+    QCOMPARE(error, ValidationError::InvalidStartPosition);
+}
+
 void TestMatchValidation::validateTournamentFields()
 {
     TournamentConfig config;
@@ -81,11 +97,13 @@ void TestMatchValidation::validateTournamentFields()
 
     config.rounds = 0;
     config.gamesPerPairing = 1;
-    QCOMPARE(validateTournamentConfig(config), ValidationError::InvalidRounds);
+    ValidationError error = validateTournamentConfig(config);
+    QCOMPARE(error, ValidationError::InvalidRounds);
 
     config.rounds = 1;
     config.gamesPerPairing = 0;
-    QCOMPARE(validateTournamentConfig(config), ValidationError::InvalidGamesPerPairing);
+    error = validateTournamentConfig(config);
+    QCOMPARE(error, ValidationError::InvalidGamesPerPairing);
 }
 
 void TestMatchValidation::validMatchConfig()
@@ -95,10 +113,12 @@ void TestMatchValidation::validMatchConfig()
     config.player1.enginePath = "C:/engines/stockfish.exe";
     config.player2.type = PlayerType::Human;
     config.player2.name = "Human";
-    config.game.useStartPos = true;
-    config.game.startPosition = "startpos";
+    config.game.useStartPos = false;
+    config.game.startPosition =
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-    QCOMPARE(validateMatchConfig(config), ValidationError::None);
+    const ValidationError error = validateMatchConfig(config);
+    QCOMPARE(error, ValidationError::None);
 }
 
 QTEST_APPLESS_MAIN(TestMatchValidation)

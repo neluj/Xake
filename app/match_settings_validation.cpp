@@ -1,5 +1,7 @@
 #include "match_settings_validation.h"
 
+#include "fen.h"
+
 void normalizeMatchConfig(MatchConfig &config)
 {
     config.player1.name = config.player1.name.trimmed();
@@ -29,6 +31,15 @@ ValidationError validateMatchConfig(const MatchConfig &config)
     }
     if (!config.game.useStartPos && config.game.startPosition.trimmed().isEmpty()) {
         return ValidationError::MissingStartPosition;
+    }
+    if (!config.game.useStartPos) {
+        const QString fenText = config.game.startPosition.trimmed();
+        if (fenText.compare(QStringLiteral("startpos"), Qt::CaseInsensitive) != 0) {
+            Position pos;
+            if (!setFromFen(pos, fenText.toStdString())) {
+                return ValidationError::InvalidStartPosition;
+            }
+        }
     }
 
     return ValidationError::None;
@@ -66,6 +77,8 @@ QString validationErrorTitle(ValidationError error)
         return QStringLiteral("Missing engine");
     case ValidationError::MissingStartPosition:
         return QStringLiteral("Missing start position");
+    case ValidationError::InvalidStartPosition:
+        return QStringLiteral("Invalid start position");
     case ValidationError::InvalidRounds:
         return QStringLiteral("Invalid rounds");
     case ValidationError::InvalidGamesPerPairing:
@@ -90,6 +103,8 @@ QString validationErrorMessage(ValidationError error)
         return QStringLiteral("Select an engine for Player 2.");
     case ValidationError::MissingStartPosition:
         return QStringLiteral("Enter a start position or enable startpos.");
+    case ValidationError::InvalidStartPosition:
+        return QStringLiteral("Start position is not a valid FEN.");
     case ValidationError::InvalidRounds:
         return QStringLiteral("Rounds must be at least 1.");
     case ValidationError::InvalidGamesPerPairing:
