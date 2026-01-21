@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "app_state.h"
+#include "game_controller.h"
 
 #include <QMainWindow>
 #include <QString>
@@ -30,5 +31,6 @@ private:
     UciClient *m_uciClient;
     QString m_enginePath;
     AppState m_state;
+    GameController *m_gameController;
 };
 #endif // MAINWINDOW_H

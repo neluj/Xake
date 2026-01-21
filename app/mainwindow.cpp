@@ -5,8 +5,6 @@
 #include "tournament_dialog.h"
 #include "uci_client.h"
 
-#include "fen.h"
-
 #include <QAction>
 #include <QMessageBox>
 #include <QString>
@@ -32,6 +30,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , m_uciClient(new UciClient(this))
+    , m_gameController(new GameController(this))
 {
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
@@ -59,6 +58,17 @@ MainWindow::MainWindow(QWidget *parent)
             }
         });
     }
+
+    connect(m_gameController, &GameController::positionChanged, this, [this](const Position& position) {
+        if (ui && ui->widget) {
+            ui->widget->setPosition(position);
+        }
+    });
+
+    connect(m_gameController, &GameController::errorOccurred, this,
+            [this](const QString& title, const QString& message) {
+        QMessageBox::warning(this, title, message);
+    });
 }
 
 MainWindow::~MainWindow()
@@ -68,20 +78,6 @@ MainWindow::~MainWindow()
 
 bool MainWindow::startMatch(const MatchConfig& config)
 {
-    if (!ui || !ui->widget) {
-        return false;
-    }
-
     const std::string fen = resolveStartFen(config.game);
-    Position position;
-    if (!setFromFen(position, fen)) {
-        QMessageBox::warning(this, tr("Invalid start position"),
-                             tr("Start position is not a valid FEN."));
-        return false;
-    }
-
-    m_state.currentPosition = position;
-    m_state.hasCurrentPosition = true;
-    ui->widget->setPosition(position);
-    return true;
+    return m_gameController->startMatch(config, fen);
 }

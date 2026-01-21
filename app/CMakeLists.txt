@@ -2,6 +2,8 @@ set(APP_SOURCES
     boardwidget.cpp
     boardwidget.h
     app_state.h
+    game_controller.cpp
+    game_controller.h
     match_settings_widget.cpp
     match_settings_widget.h
     match_settings_widget.ui
