@@ -45,7 +45,10 @@ MainWindow::MainWindow(QWidget *parent)
         connect(ui->actionSingleGame, &QAction::triggered, this, [this, applyMatchConfig]() {
             SingleGameDialog dialog(this);
             if (dialog.exec() == QDialog::Accepted) {
-                applyMatchConfig(dialog.config());
+                const MatchConfig config = dialog.config();
+                m_state.lastMatch = config;
+                m_state.hasLastMatch = true;
+                applyMatchConfig(config);
             }
         });
     }
@@ -54,7 +57,10 @@ MainWindow::MainWindow(QWidget *parent)
         connect(ui->actionTournament, &QAction::triggered, this, [this, applyMatchConfig]() {
             TournamentDialog dialog(this);
             if (dialog.exec() == QDialog::Accepted) {
-                applyMatchConfig(dialog.config().match);
+                const TournamentConfig config = dialog.config();
+                m_state.lastTournament = config;
+                m_state.hasLastTournament = true;
+                applyMatchConfig(config.match);
             }
         });
     }

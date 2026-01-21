@@ -1,6 +1,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "app_state.h"
+
 #include <QMainWindow>
 #include <QString>
 
@@ -26,5 +28,6 @@ private:
     Ui::MainWindow *ui;
     UciClient *m_uciClient;
     QString m_enginePath;
+    AppState m_state;
 };
 #endif // MAINWINDOW_H
