@@ -2,7 +2,6 @@
 
 #include <string>
 
-#include <QPixmap>
 #include <QWidget>
 
 #include "position.h"
@@ -20,8 +19,7 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
-    // Board texture loaded once and scaled on paint.
-    QPixmap m_boardPixmap;
+    // Rendered sprite sheet of chess pieces (6 columns x 2 rows).
     QPixmap m_pieceset;
     Position m_position;
 };

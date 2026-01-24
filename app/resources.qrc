@@ -1,6 +1,5 @@
 <RCC>
     <qresource prefix="/assets">
-        <file alias="boards/board.png">assets/boards/board.png</file>
-        <file alias="pieces/pieceset_64.png">assets/pieces/pieceset_64.png</file>
+        <file alias="pieces/pieceset.png">assets/Chess_Pieces_Sprite.png</file>
     </qresource>
 </RCC>

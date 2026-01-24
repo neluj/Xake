@@ -31,7 +31,7 @@ qt_add_executable(chess_app
 )
 
 target_include_directories(chess_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(chess_app PRIVATE chess_core Qt6::Widgets)
+target_link_libraries(chess_app PRIVATE chess_core Qt6::Widgets Qt6::Svg)
 
 set_target_properties(chess_app PROPERTIES
     WIN32_EXECUTABLE TRUE
