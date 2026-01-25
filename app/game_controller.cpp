@@ -524,11 +524,7 @@ void GameController::handleReadyOk(EngineSide side)
     }
     session.readyOk = true;
     session.client->sendNewGame();
-    sendPositionToEngine(session);
-    if ((side == EngineSide::White && m_position.stm == WHITE)
-        || (side == EngineSide::Black && m_position.stm == BLACK)) {
-        sendGoForSide(side);
-    }
+    startTurnIfReady();
 }
 
 void GameController::handleBestMove(EngineSide side, const QString& move)
@@ -608,13 +604,6 @@ void GameController::afterMoveApplied(Move move)
     m_moveHistory.append(move);
     emit positionChanged(m_position);
 
-    if (m_whiteSession.active) {
-        sendPositionToEngine(m_whiteSession);
-    }
-    if (m_blackSession.active) {
-        sendPositionToEngine(m_blackSession);
-    }
-
     startTurnIfReady();
 }
 
@@ -652,6 +641,7 @@ void GameController::startTurnIfReady()
     if (sideToMove == WHITE) {
         if (m_config.player1.type == PlayerType::Engine) {
             if (m_whiteSession.readyOk) {
+                sendPositionToEngine(m_whiteSession);
                 sendGoForSide(EngineSide::White);
             }
         } else {
@@ -660,6 +650,7 @@ void GameController::startTurnIfReady()
     } else {
         if (m_config.player2.type == PlayerType::Engine) {
             if (m_blackSession.readyOk) {
+                sendPositionToEngine(m_blackSession);
                 sendGoForSide(EngineSide::Black);
             }
         } else {
