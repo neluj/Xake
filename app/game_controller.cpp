@@ -248,6 +248,7 @@ Move GameController::moveFromUci(const QString& move) const
     }
 
     int flags = MOVE_FLAG_NONE;
+    Piece capturePiece = toPiece;
     if (toPiece != NO_PIECE) {
         flags |= MOVE_FLAG_CAPTURE;
     }
@@ -257,11 +258,20 @@ Move GameController::moveFromUci(const QString& move) const
     if (fromPiece == KING && std::abs(toSq - fromSq) == 2) {
         flags |= MOVE_FLAG_CASTLE;
     }
+    if (fromPiece == PAWN && std::abs(toSq - fromSq) == 16) {
+        flags |= MOVE_FLAG_DOUBLE;
+    }
+    if (fromPiece == PAWN && toPiece == NO_PIECE
+        && (fromSq % 8) != (toSq % 8) && m_position.epSquare == toSq) {
+        flags |= MOVE_FLAG_ENPASSANT;
+        capturePiece = PAWN;
+        flags |= MOVE_FLAG_CAPTURE;
+    }
 
     return make_move(fromSq,
                      toSq,
                      move_piece_code(fromPiece),
-                     move_piece_code(toPiece),
+                     move_piece_code(capturePiece),
                      move_piece_code(promoPiece),
                      flags);
 }
@@ -330,10 +340,77 @@ bool GameController::applyMove(Move move)
         return false;
     }
 
-    const bool isCapture = (toPiece != NO_PIECE);
+    const int flags = move_flags(move);
+    bool isCapture = (toPiece != NO_PIECE);
+    bool isCastle = (flags & MOVE_FLAG_CASTLE) != 0;
+    bool isEnPassant = (flags & MOVE_FLAG_ENPASSANT) != 0;
+    if (!isCastle && fromPiece == KING && std::abs(toSq - fromSq) == 2) {
+        isCastle = true;
+    }
+    if (!isEnPassant && fromPiece == PAWN && toPiece == NO_PIECE
+        && (fromSq % 8) != (toSq % 8) && m_position.epSquare == toSq) {
+        isEnPassant = true;
+    }
+
+    int epCaptureSq = -1;
+    if (isEnPassant) {
+        if (m_position.epSquare != toSq) {
+            return false;
+        }
+        epCaptureSq = (fromColor == WHITE) ? (toSq - 8) : (toSq + 8);
+        Color capColor = WHITE;
+        const Piece capPiece = m_position.pieceAt(epCaptureSq, capColor);
+        if (capPiece != PAWN || capColor == fromColor) {
+            return false;
+        }
+        isCapture = true;
+    }
 
     if (!m_position.movePiece(fromSq, toSq)) {
         return false;
+    }
+
+    if (isCastle) {
+        int rookFrom = -1;
+        int rookTo = -1;
+        if (fromColor == WHITE && fromSq == 4) {
+            if (toSq == 6) {
+                rookFrom = 7;
+                rookTo = 5;
+            } else if (toSq == 2) {
+                rookFrom = 0;
+                rookTo = 3;
+            }
+        } else if (fromColor == BLACK && fromSq == 60) {
+            if (toSq == 62) {
+                rookFrom = 63;
+                rookTo = 61;
+            } else if (toSq == 58) {
+                rookFrom = 56;
+                rookTo = 59;
+            }
+        }
+
+        if (rookFrom == -1 || rookTo == -1) {
+            return false;
+        }
+
+        Color rookColor = WHITE;
+        const Piece rookPiece = m_position.pieceAt(rookFrom, rookColor);
+        if (rookPiece != ROOK || rookColor != fromColor) {
+            return false;
+        }
+
+        if (!m_position.movePiece(rookFrom, rookTo)) {
+            return false;
+        }
+    }
+
+    if (isEnPassant && epCaptureSq >= 0) {
+        const Bitboard capMask = bb_of(epCaptureSq);
+        const Color capColor = (fromColor == WHITE) ? BLACK : WHITE;
+        m_position.bb[capColor][PAWN] &= ~capMask;
+        m_position.recomputeOcc();
     }
 
     const Piece promoPiece = move_piece_from_code(move_promo(move));
@@ -344,7 +421,41 @@ bool GameController::applyMove(Move move)
         m_position.recomputeOcc();
     }
 
+    if (fromPiece == KING) {
+        if (fromColor == WHITE) {
+            m_position.castling &= ~(CASTLE_WK | CASTLE_WQ);
+        } else {
+            m_position.castling &= ~(CASTLE_BK | CASTLE_BQ);
+        }
+    }
+    if (fromPiece == ROOK) {
+        if (fromSq == 0) {
+            m_position.castling &= ~CASTLE_WQ;
+        } else if (fromSq == 7) {
+            m_position.castling &= ~CASTLE_WK;
+        } else if (fromSq == 56) {
+            m_position.castling &= ~CASTLE_BQ;
+        } else if (fromSq == 63) {
+            m_position.castling &= ~CASTLE_BK;
+        }
+    }
+    if (toPiece == ROOK) {
+        if (toSq == 0) {
+            m_position.castling &= ~CASTLE_WQ;
+        } else if (toSq == 7) {
+            m_position.castling &= ~CASTLE_WK;
+        } else if (toSq == 56) {
+            m_position.castling &= ~CASTLE_BQ;
+        } else if (toSq == 63) {
+            m_position.castling &= ~CASTLE_BK;
+        }
+    }
+
     m_position.epSquare = -1;
+    if (fromPiece == PAWN && std::abs(toSq - fromSq) == 16) {
+        m_position.epSquare = (fromColor == WHITE) ? (fromSq + 8) : (fromSq - 8);
+    }
+
     if (fromPiece == PAWN || isCapture) {
         m_position.halfmove = 0;
     } else {

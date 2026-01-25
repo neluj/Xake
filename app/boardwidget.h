@@ -28,6 +28,7 @@ protected:
 
 private:
     bool squareFromPoint(const QPoint& point, int& outSq) const;
+    Piece promptPromotion(Color color, const QPoint& globalPos) const;
 
     // Rendered sprite sheet of chess pieces (6 columns x 2 rows).
     QPixmap m_pieceset;

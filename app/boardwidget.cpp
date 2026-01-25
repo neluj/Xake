@@ -3,6 +3,7 @@
 #include "fen.h"
 
 #include <QColor>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QSizePolicy>
@@ -191,7 +192,12 @@ void BoardWidget::mousePressEvent(QMouseEvent *event)
         const int toRank = sq / 8;
         if ((fromColor == WHITE && toRank == 7)
             || (fromColor == BLACK && toRank == 0)) {
-            promoPiece = QUEEN;
+            promoPiece = promptPromotion(fromColor, event->globalPos());
+            if (promoPiece == NO_PIECE) {
+                m_selectedSq = -1;
+                update();
+                return;
+            }
             flags |= MOVE_FLAG_PROMOTION;
         }
     }
@@ -234,4 +240,33 @@ bool BoardWidget::squareFromPoint(const QPoint& point, int& outSq) const
 
     outSq = rank * 8 + file;
     return true;
+}
+
+Piece BoardWidget::promptPromotion(Color color, const QPoint& globalPos) const
+{
+    QMenu menu;
+    QAction *queen = menu.addAction(tr("Queen"));
+    QAction *rook = menu.addAction(tr("Rook"));
+    QAction *bishop = menu.addAction(tr("Bishop"));
+    QAction *knight = menu.addAction(tr("Knight"));
+
+    QAction *chosen = menu.exec(globalPos);
+    if (!chosen) {
+        return NO_PIECE;
+    }
+
+    if (chosen == queen) {
+        return QUEEN;
+    }
+    if (chosen == rook) {
+        return ROOK;
+    }
+    if (chosen == bishop) {
+        return BISHOP;
+    }
+    if (chosen == knight) {
+        return KNIGHT;
+    }
+
+    return NO_PIECE;
 }
