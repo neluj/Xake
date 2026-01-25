@@ -68,6 +68,11 @@ bool GameController::startMatch(const MatchConfig& config, const std::string& fe
     const QString startToken = m_config.game.startPosition.trimmed();
     m_baseIsStartpos = m_config.game.useStartPos
         || startToken.compare(QStringLiteral("startpos"), Qt::CaseInsensitive) == 0;
+    m_timeControlEnabled = (m_config.game.baseTimeSeconds > 0);
+    m_whiteTimeMs = static_cast<qint64>(m_config.game.baseTimeSeconds) * 1000;
+    m_blackTimeMs = static_cast<qint64>(m_config.game.baseTimeSeconds) * 1000;
+    m_incrementMs = static_cast<qint64>(m_config.game.incrementSeconds) * 1000;
+    m_timerRunning = false;
 
     if (m_config.player1.type == PlayerType::Engine) {
         if (!startEngineForPlayer(m_whiteSession, m_config.player1, EngineSide::White)) {
@@ -86,6 +91,7 @@ bool GameController::startMatch(const MatchConfig& config, const std::string& fe
 
     emit matchStarted(m_config);
     emit positionChanged(m_position);
+    startTurnIfReady();
     return true;
 }
 
@@ -96,6 +102,7 @@ void GameController::stopMatch()
     }
     m_active = false;
     stopEngines();
+    m_timerRunning = false;
     emit matchStopped();
 }
 
@@ -141,6 +148,21 @@ MatchConfig GameController::matchConfig() const
 Position GameController::currentPosition() const
 {
     return m_position;
+}
+
+bool GameController::timeControlEnabled() const
+{
+    return m_timeControlEnabled;
+}
+
+qint64 GameController::remainingTimeMs(Color side) const
+{
+    qint64 remaining = (side == WHITE) ? m_whiteTimeMs : m_blackTimeMs;
+    if (m_timeControlEnabled && m_timerRunning && m_timedSide == side) {
+        const qint64 elapsed = m_turnTimer.elapsed();
+        remaining = qMax<qint64>(0, remaining - elapsed);
+    }
+    return remaining;
 }
 
 bool GameController::startEngineForPlayer(EngineSession& session,
@@ -503,7 +525,10 @@ void GameController::handleReadyOk(EngineSide side)
     session.readyOk = true;
     session.client->sendNewGame();
     sendPositionToEngine(session);
-    sendGoForSide(side);
+    if ((side == EngineSide::White && m_position.stm == WHITE)
+        || (side == EngineSide::Black && m_position.stm == BLACK)) {
+        sendGoForSide(side);
+    }
 }
 
 void GameController::handleBestMove(EngineSide side, const QString& move)
@@ -546,13 +571,16 @@ void GameController::sendGoForSide(EngineSide side)
         return;
     }
 
-    const int baseMs = m_config.game.baseTimeSeconds * 1000;
-    const int incMs = m_config.game.incrementSeconds * 1000;
-    if (baseMs > 0) {
-        session.client->sendGoWtimeBtime(baseMs, baseMs, incMs, incMs, m_config.game.movesToGo);
+    if (m_timeControlEnabled) {
+        const int wtime = static_cast<int>(qMax<qint64>(0, m_whiteTimeMs));
+        const int btime = static_cast<int>(qMax<qint64>(0, m_blackTimeMs));
+        const int incMs = static_cast<int>(qMax<qint64>(0, m_incrementMs));
+        session.client->sendGoWtimeBtime(wtime, btime, incMs, incMs, m_config.game.movesToGo);
     } else {
         session.client->sendGoInfinite();
     }
+
+    startSideTimer(m_position.stm);
 }
 
 EngineSession& GameController::sessionForSide(EngineSide side)
@@ -566,6 +594,16 @@ void GameController::afterMoveApplied(Move move)
     if (uci.isEmpty()) {
         return;
     }
+    const Color movedSide = (m_position.stm == WHITE) ? BLACK : WHITE;
+    stopSideTimer(movedSide);
+    if (m_timeControlEnabled) {
+        if (movedSide == WHITE) {
+            m_whiteTimeMs += m_incrementMs;
+        } else {
+            m_blackTimeMs += m_incrementMs;
+        }
+    }
+
     m_uciMoves.append(uci.toLower());
     m_moveHistory.append(move);
     emit positionChanged(m_position);
@@ -577,6 +615,55 @@ void GameController::afterMoveApplied(Move move)
         sendPositionToEngine(m_blackSession);
     }
 
-    const EngineSide toMoveSide = (m_position.stm == WHITE) ? EngineSide::White : EngineSide::Black;
-    sendGoForSide(toMoveSide);
+    startTurnIfReady();
+}
+
+void GameController::startSideTimer(Color side)
+{
+    if (!m_timeControlEnabled) {
+        return;
+    }
+    m_timedSide = side;
+    m_turnTimer.restart();
+    m_timerRunning = true;
+}
+
+void GameController::stopSideTimer(Color side)
+{
+    if (!m_timeControlEnabled || !m_timerRunning) {
+        return;
+    }
+    if (m_timedSide != side) {
+        return;
+    }
+
+    const qint64 elapsed = m_turnTimer.elapsed();
+    if (side == WHITE) {
+        m_whiteTimeMs = qMax<qint64>(0, m_whiteTimeMs - elapsed);
+    } else {
+        m_blackTimeMs = qMax<qint64>(0, m_blackTimeMs - elapsed);
+    }
+    m_timerRunning = false;
+}
+
+void GameController::startTurnIfReady()
+{
+    const Color sideToMove = m_position.stm;
+    if (sideToMove == WHITE) {
+        if (m_config.player1.type == PlayerType::Engine) {
+            if (m_whiteSession.readyOk) {
+                sendGoForSide(EngineSide::White);
+            }
+        } else {
+            startSideTimer(WHITE);
+        }
+    } else {
+        if (m_config.player2.type == PlayerType::Engine) {
+            if (m_blackSession.readyOk) {
+                sendGoForSide(EngineSide::Black);
+            }
+        } else {
+            startSideTimer(BLACK);
+        }
+    }
 }

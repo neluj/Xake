@@ -15,6 +15,19 @@ namespace {
 
 const char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+QString formatClockMs(qint64 ms)
+{
+    if (ms < 0) {
+        ms = 0;
+    }
+    const qint64 totalSeconds = ms / 1000;
+    const qint64 minutes = totalSeconds / 60;
+    const qint64 seconds = totalSeconds % 60;
+    return QString("%1:%2")
+        .arg(minutes, 2, 10, QChar('0'))
+        .arg(seconds, 2, 10, QChar('0'));
+}
+
 std::string resolveStartFen(const GameConfig& gameConfig)
 {
     const QString start = gameConfig.startPosition.trimmed();
@@ -31,9 +44,17 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
     , m_uciClient(new UciClient(this))
     , m_gameController(new GameController(this))
+    , m_clockUiTimer(new QTimer(this))
 {
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
+
+    if (m_clockUiTimer) {
+        m_clockUiTimer->setInterval(200);
+        connect(m_clockUiTimer, &QTimer::timeout, this, [this]() {
+            updateClockUi();
+        });
+    }
 
     if (ui->actionSingleGame) {
         connect(ui->actionSingleGame, &QAction::triggered, this, [this]() {
@@ -60,8 +81,28 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     connect(m_gameController, &GameController::positionChanged, this, [this](const Position& position) {
-        if (ui && ui->widget) {
-            ui->widget->setPosition(position);
+        if (ui && ui->board) {
+            ui->board->setPosition(position);
+        }
+        updateSideToMoveLabel(position);
+        updateClockUi();
+    });
+
+    connect(m_gameController, &GameController::matchStarted, this, [this](const MatchConfig&) {
+        updateSideToMoveLabel(m_gameController->currentPosition());
+        updateClockUi();
+        if (m_clockUiTimer) {
+            m_clockUiTimer->start();
+        }
+    });
+
+    connect(m_gameController, &GameController::matchStopped, this, [this]() {
+        if (m_clockUiTimer) {
+            m_clockUiTimer->stop();
+        }
+        updateClockUi();
+        if (ui && ui->labelSideToMove) {
+            ui->labelSideToMove->clear();
         }
     });
 
@@ -70,8 +111,8 @@ MainWindow::MainWindow(QWidget *parent)
         QMessageBox::warning(this, title, message);
     });
 
-    if (ui && ui->widget) {
-        connect(ui->widget, &BoardWidget::moveRequested, this, [this](Move move) {
+    if (ui && ui->board) {
+        connect(ui->board, &BoardWidget::moveRequested, this, [this](Move move) {
             m_gameController->applyHumanMove(move);
         });
     }
@@ -86,4 +127,33 @@ bool MainWindow::startMatch(const MatchConfig& config)
 {
     const std::string fen = resolveStartFen(config.game);
     return m_gameController->startMatch(config, fen);
+}
+
+void MainWindow::updateClockUi()
+{
+    if (!ui || !m_gameController) {
+        return;
+    }
+    if (!ui->whiteTimeLcd || !ui->blackTimeLcd) {
+        return;
+    }
+
+    if (!m_gameController->isActive() || !m_gameController->timeControlEnabled()) {
+        ui->whiteTimeLcd->display("--:--");
+        ui->blackTimeLcd->display("--:--");
+        return;
+    }
+
+    const qint64 whiteMs = m_gameController->remainingTimeMs(WHITE);
+    const qint64 blackMs = m_gameController->remainingTimeMs(BLACK);
+    ui->whiteTimeLcd->display(formatClockMs(whiteMs));
+    ui->blackTimeLcd->display(formatClockMs(blackMs));
+}
+
+void MainWindow::updateSideToMoveLabel(const Position& position)
+{
+    if (!ui || !ui->labelSideToMove) {
+        return;
+    }
+    ui->labelSideToMove->setText(position.stm == WHITE ? tr("White") : tr("Black"));
 }

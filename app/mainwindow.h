@@ -6,6 +6,7 @@
 
 #include <QMainWindow>
 #include <QString>
+#include <QTimer>
 
 class UciClient;
 
@@ -26,11 +27,14 @@ public:
 private:
     void configureEngine();
     bool startMatch(const MatchConfig& config);
+    void updateClockUi();
+    void updateSideToMoveLabel(const Position& position);
 
     Ui::MainWindow *ui;
     UciClient *m_uciClient;
     QString m_enginePath;
     AppState m_state;
     GameController *m_gameController;
+    QTimer *m_clockUiTimer = nullptr;
 };
 #endif // MAINWINDOW_H
