@@ -26,7 +26,7 @@ public:
 
 private:
     void configureEngine();
-    bool startMatch(const MatchConfig& config);
+    bool startMatch(const MatchConfig& config, const TournamentConfig* tournament);
     void updateClockUi();
     void updateSideToMoveLabel(const Position& position);
 

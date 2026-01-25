@@ -2,10 +2,13 @@
 #include "./ui_mainwindow.h"
 
 #include "single_game_dialog.h"
+#include "session_record.h"
 #include "tournament_dialog.h"
 #include "uci_client.h"
 
 #include <QAction>
+#include <QDateTime>
+#include <QDir>
 #include <QMessageBox>
 #include <QString>
 
@@ -37,6 +40,26 @@ std::string resolveStartFen(const GameConfig& gameConfig)
     return start.toStdString();
 }
 
+bool ensureSessionDir(const QString& dir, QString* errorOut)
+{
+    if (QDir().mkpath(dir)) {
+        return true;
+    }
+    if (errorOut) {
+        *errorOut = QStringLiteral("Failed to create directory: %1").arg(dir);
+    }
+    return false;
+}
+
+void warnSessionRecordFailure(QWidget *parent, const QString& detail)
+{
+    if (!detail.isEmpty()) {
+        QMessageBox::warning(parent,
+                             QObject::tr("Session log"),
+                             QObject::tr("Failed to write session record: %1").arg(detail));
+    }
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -63,7 +86,7 @@ MainWindow::MainWindow(QWidget *parent)
                 const MatchConfig config = dialog.config();
                 m_state.lastMatch = config;
                 m_state.hasLastMatch = true;
-                startMatch(config);
+                startMatch(config, nullptr);
             }
         });
     }
@@ -75,7 +98,7 @@ MainWindow::MainWindow(QWidget *parent)
                 const TournamentConfig config = dialog.config();
                 m_state.lastTournament = config;
                 m_state.hasLastTournament = true;
-                startMatch(config.match);
+                startMatch(config.match, &config);
             }
         });
     }
@@ -123,10 +146,37 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-bool MainWindow::startMatch(const MatchConfig& config)
+bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* tournament)
 {
     const std::string fen = resolveStartFen(config.game);
-    return m_gameController->startMatch(config, fen);
+    const QString sessionTag = sessionTagNow();
+    const QString sessionType = tournament ? QStringLiteral("tournament")
+                                           : QStringLiteral("match");
+    const QString sessionDir = defaultSessionDir(sessionTag, sessionType);
+    QString errorDetail;
+    if (!ensureSessionDir(sessionDir, &errorDetail)) {
+        warnSessionRecordFailure(this, errorDetail);
+    } else {
+        SessionRecord record;
+        record.sessionType = sessionType;
+        record.sessionTag = sessionTag;
+        record.startTimeIso = QDateTime::currentDateTime().toString(Qt::ISODate);
+        record.logDir = sessionDir;
+        record.match = config;
+        record.startFen = QString::fromStdString(fen);
+        if (tournament) {
+            record.hasTournament = true;
+            record.tournament = *tournament;
+        }
+
+        const QString recordPath = QDir(sessionDir)
+            .filePath(QString("session_%1.json").arg(sessionTag));
+        if (!writeSessionRecord(record, recordPath, &errorDetail)) {
+            warnSessionRecordFailure(this, errorDetail);
+        }
+    }
+
+    return m_gameController->startMatch(config, fen, sessionDir, sessionTag);
 }
 
 void MainWindow::updateClockUi()

@@ -18,6 +18,8 @@ set(APP_SOURCES
     tournament_dialog.cpp
     tournament_dialog.h
     tournament_dialog.ui
+    session_record.cpp
+    session_record.h
     main.cpp
     mainwindow.cpp
     mainwindow.h

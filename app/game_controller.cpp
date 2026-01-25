@@ -4,6 +4,7 @@
 #include "match_settings_validation.h"
 #include "uci_client.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QString>
 #include <QStringList>
@@ -39,7 +40,10 @@ GameController::GameController(QObject *parent)
     });
 }
 
-bool GameController::startMatch(const MatchConfig& config, const std::string& fen)
+bool GameController::startMatch(const MatchConfig& config,
+                                const std::string& fen,
+                                const QString& logDir,
+                                const QString& logTag)
 {
     stopEngines();
     m_uciMoves.clear();
@@ -73,6 +77,8 @@ bool GameController::startMatch(const MatchConfig& config, const std::string& fe
     m_blackTimeMs = static_cast<qint64>(m_config.game.baseTimeSeconds) * 1000;
     m_incrementMs = static_cast<qint64>(m_config.game.incrementSeconds) * 1000;
     m_timerRunning = false;
+    m_logDir = logDir;
+    m_logTag = logTag;
 
     if (m_config.player1.type == PlayerType::Engine) {
         if (!startEngineForPlayer(m_whiteSession, m_config.player1, EngineSide::White)) {
@@ -178,11 +184,17 @@ bool GameController::startEngineForPlayer(EngineSession& session,
     session.uciOk = false;
     session.readyOk = false;
 
-    const QString logDir = QDir::current().filePath("logs");
-    QDir().mkpath(logDir);
+    const QString effectiveLogDir = m_logDir.isEmpty()
+        ? QDir::current().filePath("logs")
+        : m_logDir;
+    QDir().mkpath(effectiveLogDir);
+    const QString effectiveTag = m_logTag.isEmpty()
+        ? QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")
+        : m_logTag;
     const QString sideName = (side == EngineSide::White) ? QStringLiteral("white")
                                                          : QStringLiteral("black");
-    const QString logFile = QDir(logDir).filePath(QString("uci_%1.log").arg(sideName));
+    const QString logFile = QDir(effectiveLogDir).filePath(
+        QString("uci_%1_%2.log").arg(sideName, effectiveTag));
     session.client->setLogFilePath(logFile);
 
     if (session.client->isRunning()) {

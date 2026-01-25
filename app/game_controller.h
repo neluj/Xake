@@ -31,7 +31,10 @@ class GameController : public QObject
 public:
     explicit GameController(QObject *parent = nullptr);
 
-    bool startMatch(const MatchConfig& config, const std::string& fen);
+    bool startMatch(const MatchConfig& config,
+                    const std::string& fen,
+                    const QString& logDir = QString(),
+                    const QString& logTag = QString());
     void stopMatch();
     bool applyHumanMove(Move move);
 
@@ -82,4 +85,6 @@ private:
     bool m_timerRunning = false;
     Color m_timedSide = WHITE;
     QElapsedTimer m_turnTimer;
+    QString m_logDir;
+    QString m_logTag;
 };
