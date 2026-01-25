@@ -1,5 +1,11 @@
 #include "uci_client.h"
 
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QTextStream>
+
 UciClient::UciClient(QObject *parent)
     : QObject(parent)
 {
@@ -23,6 +29,7 @@ UciClient::~UciClient()
             m_process.kill();
         }
     }
+    disableLogging();
 }
 
 bool UciClient::start(const QString& program, const QStringList& args)
@@ -33,6 +40,7 @@ bool UciClient::start(const QString& program, const QStringList& args)
 
     m_stdoutBuffer.clear();
     m_stderrBuffer.clear();
+    logLine("##", QString("start %1 %2").arg(program, args.join(' ')).trimmed());
     m_process.start(program, args);
     return m_process.waitForStarted(3000);
 }
@@ -52,6 +60,43 @@ void UciClient::stopProcess()
 bool UciClient::isRunning() const
 {
     return m_process.state() != QProcess::NotRunning;
+}
+
+bool UciClient::setLogFilePath(const QString& path)
+{
+    disableLogging();
+    if (path.trimmed().isEmpty()) {
+        return false;
+    }
+
+    QFileInfo info(path);
+    if (!info.dir().exists()) {
+        info.dir().mkpath(".");
+    }
+
+    m_logFile = new QFile(path, this);
+    if (!m_logFile->open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        delete m_logFile;
+        m_logFile = nullptr;
+        m_loggingEnabled = false;
+        return false;
+    }
+    m_loggingEnabled = true;
+    logLine("##", QString("logging to %1").arg(path));
+    return true;
+}
+
+void UciClient::disableLogging()
+{
+    if (m_logFile) {
+        if (m_logFile->isOpen()) {
+            m_logFile->flush();
+            m_logFile->close();
+        }
+        delete m_logFile;
+        m_logFile = nullptr;
+    }
+    m_loggingEnabled = false;
 }
 
 void UciClient::sendUci()
@@ -161,6 +206,7 @@ void UciClient::sendRawCommand(const QString& line)
     if (m_process.state() == QProcess::NotRunning) {
         return;
     }
+    logLine(">>", line);
     QByteArray data = line.toUtf8();
     if (!data.endsWith('\n')) {
         data.append('\n');
@@ -192,17 +238,20 @@ void UciClient::onReadyReadStandardError()
         if (!line.isEmpty() && line.endsWith('\r')) {
             line.chop(1);
         }
+        logLine("!!", QString::fromUtf8(line));
         emit engineError(QString::fromUtf8(line));
     }
 }
 
 void UciClient::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
+    logLine("##", QString("exit %1 status %2").arg(exitCode).arg(static_cast<int>(status)));
     emit engineExited(exitCode, status);
 }
 
 void UciClient::handleOutputLine(const QString& line)
 {
+    logLine("<<", line);
     emit engineOutput(line);
 
     if (line == "uciok") {
@@ -246,4 +295,16 @@ void UciClient::handleOutputLine(const QString& line)
         emit bestMove(move, ponder);
         return;
     }
+}
+
+void UciClient::logLine(const QString& prefix, const QString& line)
+{
+    if (!m_loggingEnabled || !m_logFile || !m_logFile->isOpen()) {
+        return;
+    }
+
+    QTextStream stream(m_logFile);
+    const QString ts = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
+    stream << ts << " " << prefix << " " << line.trimmed() << "\n";
+    m_logFile->flush();
 }

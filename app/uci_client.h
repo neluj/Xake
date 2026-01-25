@@ -4,6 +4,7 @@
 #include <QProcess>
 #include <QString>
 #include <QStringList>
+#include <QFile>
 
 class UciClient : public QObject
 {
@@ -16,6 +17,9 @@ public:
     bool start(const QString& program, const QStringList& args = {});
     void stopProcess();
     bool isRunning() const;
+
+    bool setLogFilePath(const QString& path);
+    void disableLogging();
 
     void sendUci();
     void sendIsReady();
@@ -53,8 +57,11 @@ private slots:
 
 private:
     void handleOutputLine(const QString& line);
+    void logLine(const QString& prefix, const QString& line);
 
     QProcess m_process;
     QByteArray m_stdoutBuffer;
     QByteArray m_stderrBuffer;
+    QFile *m_logFile = nullptr;
+    bool m_loggingEnabled = false;
 };

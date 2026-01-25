@@ -4,6 +4,7 @@
 #include "match_settings_validation.h"
 #include "uci_client.h"
 
+#include <QDir>
 #include <QString>
 #include <QStringList>
 #include <cstdlib>
@@ -69,14 +70,14 @@ bool GameController::startMatch(const MatchConfig& config, const std::string& fe
         || startToken.compare(QStringLiteral("startpos"), Qt::CaseInsensitive) == 0;
 
     if (m_config.player1.type == PlayerType::Engine) {
-        if (!startEngineForPlayer(m_whiteSession, m_config.player1)) {
+        if (!startEngineForPlayer(m_whiteSession, m_config.player1, EngineSide::White)) {
             stopEngines();
             m_active = false;
             return false;
         }
     }
     if (m_config.player2.type == PlayerType::Engine) {
-        if (!startEngineForPlayer(m_blackSession, m_config.player2)) {
+        if (!startEngineForPlayer(m_blackSession, m_config.player2, EngineSide::Black)) {
             stopEngines();
             m_active = false;
             return false;
@@ -143,7 +144,8 @@ Position GameController::currentPosition() const
 }
 
 bool GameController::startEngineForPlayer(EngineSession& session,
-                                          const PlayerConfig& player)
+                                          const PlayerConfig& player,
+                                          EngineSide side)
 {
     if (!session.client) {
         emit errorOccurred(tr("Engine error"), tr("Engine client not available."));
@@ -153,6 +155,13 @@ bool GameController::startEngineForPlayer(EngineSession& session,
     session.active = true;
     session.uciOk = false;
     session.readyOk = false;
+
+    const QString logDir = QDir::current().filePath("logs");
+    QDir().mkpath(logDir);
+    const QString sideName = (side == EngineSide::White) ? QStringLiteral("white")
+                                                         : QStringLiteral("black");
+    const QString logFile = QDir(logDir).filePath(QString("uci_%1.log").arg(sideName));
+    session.client->setLogFilePath(logFile);
 
     if (session.client->isRunning()) {
         session.client->sendQuit();

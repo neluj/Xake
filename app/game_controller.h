@@ -50,7 +50,8 @@ private:
     bool applyMove(Move move);
     void afterMoveApplied(Move move);
     bool startEngineForPlayer(EngineSession& session,
-                              const PlayerConfig& player);
+                              const PlayerConfig& player,
+                              EngineSide side);
     void stopEngines();
     void handleUciOk(EngineSide side);
     void handleReadyOk(EngineSide side);
