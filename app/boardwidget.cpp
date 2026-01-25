@@ -3,6 +3,7 @@
 #include "fen.h"
 
 #include <QColor>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QSizePolicy>
 #include <QSvgRenderer>
@@ -36,6 +37,7 @@ BoardWidget::BoardWidget(QWidget *parent)
 void BoardWidget::setPosition(const Position& position)
 {
     m_position = position;
+    m_selectedSq = -1;
     update();
 }
 
@@ -70,16 +72,17 @@ void BoardWidget::paintEvent(QPaintEvent *event)
         return;
     }
 
-    const int x = (width() - side) / 2;
-    const int y = (height() - side) / 2;
-    QRect boardRect(x, y, side, side);
-
-    const QColor lightSquare(240, 217, 181);
-    const QColor darkSquare(181, 136, 99);
     const int cellSize = side / 8;
     if (cellSize <= 0) {
         return;
     }
+    const int boardSize = cellSize * 8;
+    const int x = (width() - boardSize) / 2;
+    const int y = (height() - boardSize) / 2;
+    QRect boardRect(x, y, boardSize, boardSize);
+
+    const QColor lightSquare(240, 217, 181);
+    const QColor darkSquare(181, 136, 99);
     for (int rank = 0; rank < 8; ++rank) {
         for (int file = 0; file < 8; ++file) {
             const bool isLight = ((rank + file) % 2) == 0;
@@ -88,6 +91,14 @@ void BoardWidget::paintEvent(QPaintEvent *event)
             const int py = boardRect.top() + (7 - rank) * cellSize;
             painter.fillRect(QRect(px, py, cellSize, cellSize), color);
         }
+    }
+
+    if (m_selectedSq >= 0) {
+        const int selFile = m_selectedSq % 8;
+        const int selRank = m_selectedSq / 8;
+        const int px = boardRect.left() + selFile * cellSize;
+        const int py = boardRect.top() + (7 - selRank) * cellSize;
+        painter.fillRect(QRect(px, py, cellSize, cellSize), QColor(80, 120, 200, 120));
     }
 
     if (m_pieceset.isNull()) {
@@ -122,4 +133,105 @@ void BoardWidget::paintEvent(QPaintEvent *event)
         const QRectF target(px, py, cell, cell);
         painter.drawPixmap(target, m_pieceset, source);
     }
+}
+
+void BoardWidget::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    int sq = -1;
+    if (!squareFromPoint(event->pos(), sq)) {
+        m_selectedSq = -1;
+        update();
+        return;
+    }
+
+    if (m_selectedSq == -1) {
+        Color color = WHITE;
+        const Piece piece = m_position.pieceAt(sq, color);
+        if (piece == NO_PIECE || color != m_position.stm) {
+            return;
+        }
+        m_selectedSq = sq;
+        update();
+        return;
+    }
+
+    if (m_selectedSq == sq) {
+        m_selectedSq = -1;
+        update();
+        return;
+    }
+
+    Color fromColor = WHITE;
+    const Piece fromPiece = m_position.pieceAt(m_selectedSq, fromColor);
+    if (fromPiece == NO_PIECE) {
+        m_selectedSq = -1;
+        update();
+        return;
+    }
+
+    Color toColor = WHITE;
+    const Piece toPiece = m_position.pieceAt(sq, toColor);
+    if (toPiece != NO_PIECE && toColor == fromColor) {
+        m_selectedSq = -1;
+        update();
+        return;
+    }
+
+    Piece promoPiece = NO_PIECE;
+    int flags = MOVE_FLAG_NONE;
+    if (toPiece != NO_PIECE) {
+        flags |= MOVE_FLAG_CAPTURE;
+    }
+    if (fromPiece == PAWN) {
+        const int toRank = sq / 8;
+        if ((fromColor == WHITE && toRank == 7)
+            || (fromColor == BLACK && toRank == 0)) {
+            promoPiece = QUEEN;
+            flags |= MOVE_FLAG_PROMOTION;
+        }
+    }
+
+    const Move move = make_move(m_selectedSq,
+                                sq,
+                                move_piece_code(fromPiece),
+                                move_piece_code(toPiece),
+                                move_piece_code(promoPiece),
+                                flags);
+
+    emit moveRequested(move);
+    m_selectedSq = -1;
+    update();
+}
+
+bool BoardWidget::squareFromPoint(const QPoint& point, int& outSq) const
+{
+    const int side = qMin(width(), height());
+    if (side <= 0) {
+        return false;
+    }
+    const int cellSize = side / 8;
+    if (cellSize <= 0) {
+        return false;
+    }
+    const int boardSize = cellSize * 8;
+    const int x = (width() - boardSize) / 2;
+    const int y = (height() - boardSize) / 2;
+    const QRect boardRect(x, y, boardSize, boardSize);
+    if (!boardRect.contains(point)) {
+        return false;
+    }
+
+    const int file = (point.x() - boardRect.left()) / cellSize;
+    const int rank = 7 - (point.y() - boardRect.top()) / cellSize;
+    if (file < 0 || file >= 8 || rank < 0 || rank >= 8) {
+        return false;
+    }
+
+    outSq = rank * 8 + file;
+    return true;
 }

@@ -6,6 +6,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <cstdlib>
 
 GameController::GameController(QObject *parent)
     : QObject(parent)
@@ -40,7 +41,8 @@ GameController::GameController(QObject *parent)
 bool GameController::startMatch(const MatchConfig& config, const std::string& fen)
 {
     stopEngines();
-    m_moves.clear();
+    m_uciMoves.clear();
+    m_moveHistory.clear();
 
     MatchConfig normalized = config;
     normalizeMatchConfig(normalized);
@@ -94,6 +96,35 @@ void GameController::stopMatch()
     m_active = false;
     stopEngines();
     emit matchStopped();
+}
+
+bool GameController::applyHumanMove(Move move)
+{
+    if (!m_active) {
+        return false;
+    }
+
+    const Color stm = m_position.stm;
+    const PlayerConfig& player = (stm == WHITE) ? m_config.player1 : m_config.player2;
+    if (player.type != PlayerType::Human) {
+        return false;
+    }
+
+    const int fromSq = move_from(move);
+    const int toSq = move_to(move);
+    Color fromColor = WHITE;
+    const Piece fromPiece = m_position.pieceAt(fromSq, fromColor);
+    if (fromPiece == NO_PIECE || fromColor != stm) {
+        return false;
+    }
+
+    if (!applyMove(move)) {
+        emit errorOccurred(tr("Invalid move"), tr("Move could not be applied."));
+        return false;
+    }
+
+    afterMoveApplied(move);
+    return true;
 }
 
 bool GameController::isActive() const
@@ -159,10 +190,10 @@ void GameController::stopEngines()
     }
 }
 
-bool GameController::applyUciMove(const QString& move)
+Move GameController::moveFromUci(const QString& move) const
 {
     if (move.size() < 4) {
-        return false;
+        return MOVE_NONE;
     }
 
     const char fromFile = move[0].toLatin1();
@@ -170,10 +201,10 @@ bool GameController::applyUciMove(const QString& move)
     const char toFile = move[2].toLatin1();
     const char toRank = move[3].toLatin1();
     if (fromFile < 'a' || fromFile > 'h' || toFile < 'a' || toFile > 'h') {
-        return false;
+        return MOVE_NONE;
     }
     if (fromRank < '1' || fromRank > '8' || toRank < '1' || toRank > '8') {
-        return false;
+        return MOVE_NONE;
     }
 
     const int fromSq = (fromRank - '1') * 8 + (fromFile - 'a');
@@ -182,21 +213,18 @@ bool GameController::applyUciMove(const QString& move)
     Color fromColor = WHITE;
     const Piece fromPiece = m_position.pieceAt(fromSq, fromColor);
     if (fromPiece == NO_PIECE) {
-        return false;
+        return MOVE_NONE;
     }
 
     Color toColor = WHITE;
     const Piece toPiece = m_position.pieceAt(toSq, toColor);
-    const bool isCapture = (toPiece != NO_PIECE);
-
-    if (!m_position.movePiece(fromSq, toSq)) {
-        return false;
+    if (toPiece != NO_PIECE && toColor == fromColor) {
+        return MOVE_NONE;
     }
 
-    if (move.size() >= 5 && fromPiece == PAWN) {
-        const char promo = move[4].toLatin1();
-        Piece promoPiece = NO_PIECE;
-        switch (promo) {
+    Piece promoPiece = NO_PIECE;
+    if (move.size() >= 5) {
+        switch (move[4].toLatin1()) {
         case 'q':
         case 'Q':
             promoPiece = QUEEN;
@@ -217,13 +245,103 @@ bool GameController::applyUciMove(const QString& move)
             promoPiece = NO_PIECE;
             break;
         }
+    }
 
-        if (promoPiece != NO_PIECE) {
-            const Bitboard toMask = bb_of(toSq);
-            m_position.bb[fromColor][PAWN] &= ~toMask;
-            m_position.bb[fromColor][promoPiece] |= toMask;
-            m_position.recomputeOcc();
+    int flags = MOVE_FLAG_NONE;
+    if (toPiece != NO_PIECE) {
+        flags |= MOVE_FLAG_CAPTURE;
+    }
+    if (promoPiece != NO_PIECE) {
+        flags |= MOVE_FLAG_PROMOTION;
+    }
+    if (fromPiece == KING && std::abs(toSq - fromSq) == 2) {
+        flags |= MOVE_FLAG_CASTLE;
+    }
+
+    return make_move(fromSq,
+                     toSq,
+                     move_piece_code(fromPiece),
+                     move_piece_code(toPiece),
+                     move_piece_code(promoPiece),
+                     flags);
+}
+
+QString GameController::uciFromMove(Move move) const
+{
+    if (move == MOVE_NONE) {
+        return QString();
+    }
+
+    const int fromSq = move_from(move);
+    const int toSq = move_to(move);
+    const char fromFile = static_cast<char>('a' + (fromSq % 8));
+    const char fromRank = static_cast<char>('1' + (fromSq / 8));
+    const char toFile = static_cast<char>('a' + (toSq % 8));
+    const char toRank = static_cast<char>('1' + (toSq / 8));
+
+    QString uci;
+    uci.reserve(5);
+    uci.append(QChar(fromFile));
+    uci.append(QChar(fromRank));
+    uci.append(QChar(toFile));
+    uci.append(QChar(toRank));
+
+    const Piece promoPiece = move_piece_from_code(move_promo(move));
+    if (promoPiece != NO_PIECE) {
+        switch (promoPiece) {
+        case QUEEN:
+            uci.append('q');
+            break;
+        case ROOK:
+            uci.append('r');
+            break;
+        case BISHOP:
+            uci.append('b');
+            break;
+        case KNIGHT:
+            uci.append('n');
+            break;
+        default:
+            break;
         }
+    }
+
+    return uci;
+}
+
+bool GameController::applyMove(Move move)
+{
+    if (move == MOVE_NONE) {
+        return false;
+    }
+
+    const int fromSq = move_from(move);
+    const int toSq = move_to(move);
+
+    Color fromColor = WHITE;
+    const Piece fromPiece = m_position.pieceAt(fromSq, fromColor);
+    if (fromPiece == NO_PIECE) {
+        return false;
+    }
+
+    Color toColor = WHITE;
+    const Piece toPiece = m_position.pieceAt(toSq, toColor);
+    if (toPiece != NO_PIECE && toColor == fromColor) {
+        return false;
+    }
+
+    const bool isCapture = (toPiece != NO_PIECE);
+
+    if (!m_position.movePiece(fromSq, toSq)) {
+        return false;
+    }
+
+    const Piece promoPiece = move_piece_from_code(move_promo(move));
+    if (promoPiece != NO_PIECE && fromPiece == PAWN) {
+        const Bitboard toMask = bb_of(toSq);
+        m_position.bb[fromColor][PAWN] &= ~toMask;
+        m_position.bb[fromColor][promoPiece] |= toMask;
+        m_position.recomputeOcc();
     }
 
     m_position.epSquare = -1;
@@ -277,23 +395,12 @@ void GameController::handleBestMove(EngineSide side, const QString& move)
         return;
     }
 
-    if (!applyUciMove(move)) {
+    const Move parsed = moveFromUci(move);
+    if (!applyMove(parsed)) {
         emit errorOccurred(tr("Engine error"), tr("Invalid bestmove: %1").arg(move));
         return;
     }
-
-    m_moves.append(move.toLower());
-    emit positionChanged(m_position);
-
-    if (m_whiteSession.active) {
-        sendPositionToEngine(m_whiteSession);
-    }
-    if (m_blackSession.active) {
-        sendPositionToEngine(m_blackSession);
-    }
-
-    const EngineSide toMoveSide = (m_position.stm == WHITE) ? EngineSide::White : EngineSide::Black;
-    sendGoForSide(toMoveSide);
+    afterMoveApplied(parsed);
 }
 
 void GameController::sendPositionToEngine(EngineSession& session)
@@ -302,9 +409,9 @@ void GameController::sendPositionToEngine(EngineSession& session)
         return;
     }
     if (m_baseIsStartpos) {
-        session.client->sendPositionStartpos(m_moves);
+        session.client->sendPositionStartpos(m_uciMoves);
     } else {
-        session.client->sendPositionFen(QString::fromStdString(m_baseFen), m_moves);
+        session.client->sendPositionFen(QString::fromStdString(m_baseFen), m_uciMoves);
     }
 }
 
@@ -331,4 +438,25 @@ void GameController::sendGoForSide(EngineSide side)
 EngineSession& GameController::sessionForSide(EngineSide side)
 {
     return (side == EngineSide::White) ? m_whiteSession : m_blackSession;
+}
+
+void GameController::afterMoveApplied(Move move)
+{
+    const QString uci = uciFromMove(move);
+    if (uci.isEmpty()) {
+        return;
+    }
+    m_uciMoves.append(uci.toLower());
+    m_moveHistory.append(move);
+    emit positionChanged(m_position);
+
+    if (m_whiteSession.active) {
+        sendPositionToEngine(m_whiteSession);
+    }
+    if (m_blackSession.active) {
+        sendPositionToEngine(m_blackSession);
+    }
+
+    const EngineSide toMoveSide = (m_position.stm == WHITE) ? EngineSide::White : EngineSide::Black;
+    sendGoForSide(toMoveSide);
 }

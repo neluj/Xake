@@ -69,6 +69,12 @@ MainWindow::MainWindow(QWidget *parent)
             [this](const QString& title, const QString& message) {
         QMessageBox::warning(this, title, message);
     });
+
+    if (ui && ui->widget) {
+        connect(ui->widget, &BoardWidget::moveRequested, this, [this](Move move) {
+            m_gameController->applyHumanMove(move);
+        });
+    }
 }
 
 MainWindow::~MainWindow()

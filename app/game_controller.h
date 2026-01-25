@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 #include <string>
 
 class UciClient;
@@ -31,6 +32,7 @@ public:
 
     bool startMatch(const MatchConfig& config, const std::string& fen);
     void stopMatch();
+    bool applyHumanMove(Move move);
 
     bool isActive() const;
     MatchConfig matchConfig() const;
@@ -43,10 +45,13 @@ signals:
     void errorOccurred(const QString& title, const QString& message);
 
 private:
+    Move moveFromUci(const QString& move) const;
+    QString uciFromMove(Move move) const;
+    bool applyMove(Move move);
+    void afterMoveApplied(Move move);
     bool startEngineForPlayer(EngineSession& session,
                               const PlayerConfig& player);
     void stopEngines();
-    bool applyUciMove(const QString& move);
     void handleUciOk(EngineSide side);
     void handleReadyOk(EngineSide side);
     void handleBestMove(EngineSide side, const QString& move);
@@ -61,5 +66,6 @@ private:
     EngineSession m_blackSession;
     bool m_baseIsStartpos = false;
     std::string m_baseFen;
-    QStringList m_moves;
+    QStringList m_uciMoves;
+    QVector<Move> m_moveHistory;
 };
