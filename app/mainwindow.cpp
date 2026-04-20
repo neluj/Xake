@@ -14,6 +14,8 @@
 
 #include <string>
 
+using namespace ChessGame;
+
 namespace {
 
 const char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -103,7 +105,7 @@ MainWindow::MainWindow(QWidget *parent)
         });
     }
 
-    connect(m_gameController, &GameController::positionChanged, this, [this](const Position& position) {
+    connect(m_gameController, &GameController::positionChanged, this, [this](const ChessGame::Position& position) {
         if (ui && ui->board) {
             ui->board->setPosition(position);
         }
@@ -135,9 +137,14 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     if (ui && ui->board) {
-        connect(ui->board, &BoardWidget::moveRequested, this, [this](Move move) {
+        connect(ui->board, &BoardWidget::moveRequested, this, [this](ChessGame::Move move) {
             m_gameController->applyHumanMove(move);
         });
+    }
+
+    updateClockUi();
+    if (ui && ui->labelSideToMove) {
+        ui->labelSideToMove->clear();
     }
 }
 
@@ -200,10 +207,10 @@ void MainWindow::updateClockUi()
     ui->blackTimeLcd->display(formatClockMs(blackMs));
 }
 
-void MainWindow::updateSideToMoveLabel(const Position& position)
+void MainWindow::updateSideToMoveLabel(const ChessGame::Position& position)
 {
     if (!ui || !ui->labelSideToMove) {
         return;
     }
-    ui->labelSideToMove->setText(position.stm == WHITE ? tr("White") : tr("Black"));
+    ui->labelSideToMove->setText(position.get_side_to_move() == WHITE ? tr("White") : tr("Black"));
 }

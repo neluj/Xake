@@ -15,12 +15,11 @@ class BoardWidget : public QWidget
 
 public:
     explicit BoardWidget(QWidget *parent = nullptr);
-    void setPosition(const Position& position);
+    void setPosition(const ChessGame::Position& position);
     bool setFromFenString(const std::string& fen);
-    bool movePiece(int fromSq, int toSq);
 
 signals:
-    void moveRequested(Move move);
+    void moveRequested(ChessGame::Move move);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -28,10 +27,10 @@ protected:
 
 private:
     bool squareFromPoint(const QPoint& point, int& outSq) const;
-    Piece promptPromotion(Color color, const QPoint& globalPos) const;
+    ChessGame::PieceType promptPromotion(ChessGame::Color color, const QPoint& globalPos) const;
 
     // Rendered sprite sheet of chess pieces (6 columns x 2 rows).
     QPixmap m_pieceset;
-    Position m_position;
+    ChessGame::Position m_position;
     int m_selectedSq = -1;
 };

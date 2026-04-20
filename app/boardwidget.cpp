@@ -1,6 +1,6 @@
 #include "boardwidget.h"
 
-#include "fen.h"
+#include "move.h"
 
 #include <QColor>
 #include <QMenu>
@@ -8,6 +8,56 @@
 #include <QPainter>
 #include <QSizePolicy>
 #include <QSvgRenderer>
+
+using namespace ChessGame;
+
+namespace {
+
+Piece pieceAt(const Position& position, int sq)
+{
+    if (sq < 0 || sq >= SQ64_SIZE) {
+        return NO_PIECE;
+    }
+    return position.get_mailbox_piece(Square64(sq));
+}
+
+int pieceSpriteColumn(Piece piece)
+{
+    switch (piece_type(piece)) {
+    case PAWN:
+        return 5;
+    case KNIGHT:
+        return 3;
+    case BISHOP:
+        return 2;
+    case ROOK:
+        return 4;
+    case QUEEN:
+        return 1;
+    case KING:
+        return 0;
+    default:
+        return -1;
+    }
+}
+
+SpecialMove promotionMove(PieceType pieceType)
+{
+    switch (pieceType) {
+    case KNIGHT:
+        return PROMOTION_KNIGHT;
+    case BISHOP:
+        return PROMOTION_BISHOP;
+    case ROOK:
+        return PROMOTION_ROOK;
+    case QUEEN:
+        return PROMOTION_QUEEN;
+    default:
+        return NO_SPECIAL;
+    }
+}
+
+} // namespace
 
 BoardWidget::BoardWidget(QWidget *parent)
     : QWidget(parent)
@@ -35,7 +85,7 @@ BoardWidget::BoardWidget(QWidget *parent)
     setFromFenString("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
 
-void BoardWidget::setPosition(const Position& position)
+void BoardWidget::setPosition(const ChessGame::Position& position)
 {
     m_position = position;
     m_selectedSq = -1;
@@ -44,16 +94,7 @@ void BoardWidget::setPosition(const Position& position)
 
 bool BoardWidget::setFromFenString(const std::string& fen)
 {
-    if (!setFromFen(m_position, fen)) {
-        return false;
-    }
-    update();
-    return true;
-}
-
-bool BoardWidget::movePiece(int fromSq, int toSq)
-{
-    if (!m_position.movePiece(fromSq, toSq)) {
+    if (!m_position.set_FEN(fen)) {
         return false;
     }
     update();
@@ -86,7 +127,7 @@ void BoardWidget::paintEvent(QPaintEvent *event)
     const QColor darkSquare(181, 136, 99);
     for (int rank = 0; rank < 8; ++rank) {
         for (int file = 0; file < 8; ++file) {
-            const bool isLight = ((rank + file) % 2) == 0;
+            const bool isLight = ((rank + file) % 2) != 0;
             const QColor color = isLight ? lightSquare : darkSquare;
             const int px = boardRect.left() + file * cellSize;
             const int py = boardRect.top() + (7 - rank) * cellSize;
@@ -114,17 +155,18 @@ void BoardWidget::paintEvent(QPaintEvent *event)
 
     // Fit the pieces into the board square grid.
     const double cell = static_cast<double>(cellSize);
-    static const int pieceToCol[PIECE_NB] = { 5, 3, 2, 4, 1, 0 };
 
     for (int sq = 0; sq < 64; ++sq) {
-        Color color = WHITE;
-        const Piece piece = m_position.pieceAt(sq, color);
+        const Piece piece = pieceAt(m_position, sq);
         if (piece == NO_PIECE) {
             continue;
         }
 
-        const int col = pieceToCol[piece];
-        const int row = (color == WHITE) ? 0 : 1;
+        const int col = pieceSpriteColumn(piece);
+        if (col < 0) {
+            continue;
+        }
+        const int row = (piece_color(piece) == WHITE) ? 0 : 1;
         const QRectF source(col * tileW, row * tileH, tileW, tileH);
 
         const int file = sq % 8;
@@ -151,9 +193,8 @@ void BoardWidget::mousePressEvent(QMouseEvent *event)
     }
 
     if (m_selectedSq == -1) {
-        Color color = WHITE;
-        const Piece piece = m_position.pieceAt(sq, color);
-        if (piece == NO_PIECE || color != m_position.stm) {
+        const Piece piece = pieceAt(m_position, sq);
+        if (piece == NO_PIECE || piece_color(piece) != m_position.get_side_to_move()) {
             return;
         }
         m_selectedSq = sq;
@@ -167,47 +208,38 @@ void BoardWidget::mousePressEvent(QMouseEvent *event)
         return;
     }
 
-    Color fromColor = WHITE;
-    const Piece fromPiece = m_position.pieceAt(m_selectedSq, fromColor);
+    const Piece fromPiece = pieceAt(m_position, m_selectedSq);
     if (fromPiece == NO_PIECE) {
         m_selectedSq = -1;
         update();
         return;
     }
+    const Color fromColor = piece_color(fromPiece);
 
-    Color toColor = WHITE;
-    const Piece toPiece = m_position.pieceAt(sq, toColor);
-    if (toPiece != NO_PIECE && toColor == fromColor) {
+    const Piece toPiece = pieceAt(m_position, sq);
+    if (toPiece != NO_PIECE && piece_color(toPiece) == fromColor) {
         m_selectedSq = -1;
         update();
         return;
     }
 
-    Piece promoPiece = NO_PIECE;
-    int flags = MOVE_FLAG_NONE;
-    if (toPiece != NO_PIECE) {
-        flags |= MOVE_FLAG_CAPTURE;
-    }
-    if (fromPiece == PAWN) {
+    PieceType promoPiece = NO_PIECE_TYPE;
+    if (piece_type(fromPiece) == PAWN) {
         const int toRank = sq / 8;
         if ((fromColor == WHITE && toRank == 7)
             || (fromColor == BLACK && toRank == 0)) {
-            promoPiece = promptPromotion(fromColor, event->globalPos());
-            if (promoPiece == NO_PIECE) {
+            promoPiece = promptPromotion(fromColor, event->globalPosition().toPoint());
+            if (promoPiece == NO_PIECE_TYPE) {
                 m_selectedSq = -1;
                 update();
                 return;
             }
-            flags |= MOVE_FLAG_PROMOTION;
         }
     }
 
-    const Move move = make_move(m_selectedSq,
-                                sq,
-                                move_piece_code(fromPiece),
-                                move_piece_code(toPiece),
-                                move_piece_code(promoPiece),
-                                flags);
+    const Move move = make_quiet_move(Square64(m_selectedSq),
+                                      Square64(sq),
+                                      promotionMove(promoPiece));
 
     emit moveRequested(move);
     m_selectedSq = -1;
@@ -242,8 +274,10 @@ bool BoardWidget::squareFromPoint(const QPoint& point, int& outSq) const
     return true;
 }
 
-Piece BoardWidget::promptPromotion(Color color, const QPoint& globalPos) const
+ChessGame::PieceType BoardWidget::promptPromotion(ChessGame::Color color, const QPoint& globalPos) const
 {
+    Q_UNUSED(color);
+
     QMenu menu;
     QAction *queen = menu.addAction(tr("Queen"));
     QAction *rook = menu.addAction(tr("Rook"));
@@ -252,7 +286,7 @@ Piece BoardWidget::promptPromotion(Color color, const QPoint& globalPos) const
 
     QAction *chosen = menu.exec(globalPos);
     if (!chosen) {
-        return NO_PIECE;
+        return NO_PIECE_TYPE;
     }
 
     if (chosen == queen) {
@@ -268,5 +302,5 @@ Piece BoardWidget::promptPromotion(Color color, const QPoint& globalPos) const
         return KNIGHT;
     }
 
-    return NO_PIECE;
+    return NO_PIECE_TYPE;
 }

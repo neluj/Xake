@@ -15,3 +15,15 @@ target_include_directories(match_settings_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
 target_link_libraries(match_settings_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME match_settings_tests COMMAND match_settings_tests)
+
+add_executable(move_execution_tests
+    test_move_execution.cpp
+    ${CMAKE_SOURCE_DIR}/app/game_controller.cpp
+    ${CMAKE_SOURCE_DIR}/app/match_settings_validation.cpp
+    ${CMAKE_SOURCE_DIR}/app/uci_client.cpp
+)
+
+target_include_directories(move_execution_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(move_execution_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME move_execution_tests COMMAND move_execution_tests)

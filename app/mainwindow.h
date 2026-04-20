@@ -28,7 +28,7 @@ private:
     void configureEngine();
     bool startMatch(const MatchConfig& config, const TournamentConfig* tournament);
     void updateClockUi();
-    void updateSideToMoveLabel(const Position& position);
+    void updateSideToMoveLabel(const ChessGame::Position& position);
 
     Ui::MainWindow *ui;
     UciClient *m_uciClient;

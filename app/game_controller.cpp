@@ -1,7 +1,7 @@
 #include "game_controller.h"
 
-#include "fen.h"
 #include "match_settings_validation.h"
+#include "movegen.h"
 #include "uci_client.h"
 
 #include <QDateTime>
@@ -9,6 +9,53 @@
 #include <QString>
 #include <QStringList>
 #include <cstdlib>
+
+using namespace ChessGame;
+
+namespace {
+
+SpecialMove promotionMove(PieceType pieceType)
+{
+    switch (pieceType) {
+    case KNIGHT:
+        return PROMOTION_KNIGHT;
+    case BISHOP:
+        return PROMOTION_BISHOP;
+    case ROOK:
+        return PROMOTION_ROOK;
+    case QUEEN:
+        return PROMOTION_QUEEN;
+    default:
+        return NO_SPECIAL;
+    }
+}
+
+PieceType promotionPieceFromUciChar(char c)
+{
+    switch (c) {
+    case 'q':
+    case 'Q':
+        return QUEEN;
+    case 'r':
+    case 'R':
+        return ROOK;
+    case 'b':
+    case 'B':
+        return BISHOP;
+    case 'n':
+    case 'N':
+        return KNIGHT;
+    default:
+        return NO_PIECE_TYPE;
+    }
+}
+
+Move makeMoveCandidate(int fromSq, int toSq, PieceType promotion)
+{
+    return make_quiet_move(Square64(fromSq), Square64(toSq), promotionMove(promotion));
+}
+
+} // namespace
 
 GameController::GameController(QObject *parent)
     : QObject(parent)
@@ -59,7 +106,7 @@ bool GameController::startMatch(const MatchConfig& config,
     }
 
     Position position;
-    if (!setFromFen(position, fen)) {
+    if (!position.set_FEN(fen)) {
         emit errorOccurred(tr("Invalid start position"),
                            tr("Start position is not a valid FEN."));
         return false;
@@ -118,26 +165,19 @@ bool GameController::applyHumanMove(Move move)
         return false;
     }
 
-    const Color stm = m_position.stm;
+    const Color stm = m_position.get_side_to_move();
     const PlayerConfig& player = (stm == WHITE) ? m_config.player1 : m_config.player2;
     if (player.type != PlayerType::Human) {
         return false;
     }
 
-    const int fromSq = move_from(move);
-    const int toSq = move_to(move);
-    Color fromColor = WHITE;
-    const Piece fromPiece = m_position.pieceAt(fromSq, fromColor);
-    if (fromPiece == NO_PIECE || fromColor != stm) {
-        return false;
-    }
-
-    if (!applyMove(move)) {
+    Move appliedMove = NOMOVE;
+    if (!applyMove(move, &appliedMove)) {
         emit errorOccurred(tr("Invalid move"), tr("Move could not be applied."));
         return false;
     }
 
-    afterMoveApplied(move);
+    afterMoveApplied(appliedMove);
     return true;
 }
 
@@ -151,7 +191,7 @@ MatchConfig GameController::matchConfig() const
     return m_config;
 }
 
-Position GameController::currentPosition() const
+ChessGame::Position GameController::currentPosition() const
 {
     return m_position;
 }
@@ -161,7 +201,7 @@ bool GameController::timeControlEnabled() const
     return m_timeControlEnabled;
 }
 
-qint64 GameController::remainingTimeMs(Color side) const
+qint64 GameController::remainingTimeMs(ChessGame::Color side) const
 {
     qint64 remaining = (side == WHITE) ? m_whiteTimeMs : m_blackTimeMs;
     if (m_timeControlEnabled && m_timerRunning && m_timedSide == side) {
@@ -236,7 +276,7 @@ void GameController::stopEngines()
 Move GameController::moveFromUci(const QString& move) const
 {
     if (move.size() < 4) {
-        return MOVE_NONE;
+        return NOMOVE;
     }
 
     const char fromFile = move[0].toLatin1();
@@ -244,84 +284,53 @@ Move GameController::moveFromUci(const QString& move) const
     const char toFile = move[2].toLatin1();
     const char toRank = move[3].toLatin1();
     if (fromFile < 'a' || fromFile > 'h' || toFile < 'a' || toFile > 'h') {
-        return MOVE_NONE;
+        return NOMOVE;
     }
     if (fromRank < '1' || fromRank > '8' || toRank < '1' || toRank > '8') {
-        return MOVE_NONE;
+        return NOMOVE;
     }
 
     const int fromSq = (fromRank - '1') * 8 + (fromFile - 'a');
     const int toSq = (toRank - '1') * 8 + (toFile - 'a');
-
-    Color fromColor = WHITE;
-    const Piece fromPiece = m_position.pieceAt(fromSq, fromColor);
-    if (fromPiece == NO_PIECE) {
-        return MOVE_NONE;
+    const PieceType promotion = (move.size() >= 5)
+        ? promotionPieceFromUciChar(move[4].toLatin1())
+        : NO_PIECE_TYPE;
+    if (move.size() >= 5 && promotion == NO_PIECE_TYPE) {
+        return NOMOVE;
     }
 
-    Color toColor = WHITE;
-    const Piece toPiece = m_position.pieceAt(toSq, toColor);
-    if (toPiece != NO_PIECE && toColor == fromColor) {
-        return MOVE_NONE;
+    return makeMoveCandidate(fromSq, toSq, promotion);
+}
+
+Move GameController::resolveMoveCandidate(Move move) const
+{
+    if (move == NOMOVE) {
+        return NOMOVE;
     }
 
-    Piece promoPiece = NO_PIECE;
-    if (move.size() >= 5) {
-        switch (move[4].toLatin1()) {
-        case 'q':
-        case 'Q':
-            promoPiece = QUEEN;
-            break;
-        case 'r':
-        case 'R':
-            promoPiece = ROOK;
-            break;
-        case 'b':
-        case 'B':
-            promoPiece = BISHOP;
-            break;
-        case 'n':
-        case 'N':
-            promoPiece = KNIGHT;
-            break;
-        default:
-            promoPiece = NO_PIECE;
-            break;
+    MoveGen::MoveList moveList;
+    MoveGen::generate_pseudo_moves(m_position, moveList);
+
+    for (int i = 0; i < moveList.size; ++i) {
+        const Move generatedMove = moveList.moves[i];
+        if (move_from(generatedMove) != move_from(move)
+            || move_to(generatedMove) != move_to(move)
+            || promoted_piece(generatedMove) != promoted_piece(move)) {
+            continue;
+        }
+
+        Position testPosition = m_position;
+        if (testPosition.do_move(generatedMove)) {
+            return generatedMove;
         }
     }
 
-    int flags = MOVE_FLAG_NONE;
-    Piece capturePiece = toPiece;
-    if (toPiece != NO_PIECE) {
-        flags |= MOVE_FLAG_CAPTURE;
-    }
-    if (promoPiece != NO_PIECE) {
-        flags |= MOVE_FLAG_PROMOTION;
-    }
-    if (fromPiece == KING && std::abs(toSq - fromSq) == 2) {
-        flags |= MOVE_FLAG_CASTLE;
-    }
-    if (fromPiece == PAWN && std::abs(toSq - fromSq) == 16) {
-        flags |= MOVE_FLAG_DOUBLE;
-    }
-    if (fromPiece == PAWN && toPiece == NO_PIECE
-        && (fromSq % 8) != (toSq % 8) && m_position.epSquare == toSq) {
-        flags |= MOVE_FLAG_ENPASSANT;
-        capturePiece = PAWN;
-        flags |= MOVE_FLAG_CAPTURE;
-    }
-
-    return make_move(fromSq,
-                     toSq,
-                     move_piece_code(fromPiece),
-                     move_piece_code(capturePiece),
-                     move_piece_code(promoPiece),
-                     flags);
+    return NOMOVE;
 }
 
 QString GameController::uciFromMove(Move move) const
 {
-    if (move == MOVE_NONE) {
+    if (move == NOMOVE) {
         return QString();
     }
 
@@ -339,9 +348,9 @@ QString GameController::uciFromMove(Move move) const
     uci.append(QChar(toFile));
     uci.append(QChar(toRank));
 
-    const Piece promoPiece = move_piece_from_code(move_promo(move));
-    if (promoPiece != NO_PIECE) {
-        switch (promoPiece) {
+    const PieceType promotion = promoted_piece(move);
+    if (promotion != NO_PIECE_TYPE) {
+        switch (promotion) {
         case QUEEN:
             uci.append('q');
             break;
@@ -362,151 +371,19 @@ QString GameController::uciFromMove(Move move) const
     return uci;
 }
 
-bool GameController::applyMove(Move move)
+bool GameController::applyMove(Move move, Move* appliedMove)
 {
-    if (move == MOVE_NONE) {
+    const Move legalMove = resolveMoveCandidate(move);
+    if (legalMove == NOMOVE) {
         return false;
     }
 
-    const int fromSq = move_from(move);
-    const int toSq = move_to(move);
-
-    Color fromColor = WHITE;
-    const Piece fromPiece = m_position.pieceAt(fromSq, fromColor);
-    if (fromPiece == NO_PIECE) {
+    if (!m_position.do_move(legalMove)) {
         return false;
     }
 
-    Color toColor = WHITE;
-    const Piece toPiece = m_position.pieceAt(toSq, toColor);
-    if (toPiece != NO_PIECE && toColor == fromColor) {
-        return false;
-    }
-
-    const int flags = move_flags(move);
-    bool isCapture = (toPiece != NO_PIECE);
-    bool isCastle = (flags & MOVE_FLAG_CASTLE) != 0;
-    bool isEnPassant = (flags & MOVE_FLAG_ENPASSANT) != 0;
-    if (!isCastle && fromPiece == KING && std::abs(toSq - fromSq) == 2) {
-        isCastle = true;
-    }
-    if (!isEnPassant && fromPiece == PAWN && toPiece == NO_PIECE
-        && (fromSq % 8) != (toSq % 8) && m_position.epSquare == toSq) {
-        isEnPassant = true;
-    }
-
-    int epCaptureSq = -1;
-    if (isEnPassant) {
-        if (m_position.epSquare != toSq) {
-            return false;
-        }
-        epCaptureSq = (fromColor == WHITE) ? (toSq - 8) : (toSq + 8);
-        Color capColor = WHITE;
-        const Piece capPiece = m_position.pieceAt(epCaptureSq, capColor);
-        if (capPiece != PAWN || capColor == fromColor) {
-            return false;
-        }
-        isCapture = true;
-    }
-
-    if (!m_position.movePiece(fromSq, toSq)) {
-        return false;
-    }
-
-    if (isCastle) {
-        int rookFrom = -1;
-        int rookTo = -1;
-        if (fromColor == WHITE && fromSq == 4) {
-            if (toSq == 6) {
-                rookFrom = 7;
-                rookTo = 5;
-            } else if (toSq == 2) {
-                rookFrom = 0;
-                rookTo = 3;
-            }
-        } else if (fromColor == BLACK && fromSq == 60) {
-            if (toSq == 62) {
-                rookFrom = 63;
-                rookTo = 61;
-            } else if (toSq == 58) {
-                rookFrom = 56;
-                rookTo = 59;
-            }
-        }
-
-        if (rookFrom == -1 || rookTo == -1) {
-            return false;
-        }
-
-        Color rookColor = WHITE;
-        const Piece rookPiece = m_position.pieceAt(rookFrom, rookColor);
-        if (rookPiece != ROOK || rookColor != fromColor) {
-            return false;
-        }
-
-        if (!m_position.movePiece(rookFrom, rookTo)) {
-            return false;
-        }
-    }
-
-    if (isEnPassant && epCaptureSq >= 0) {
-        const Bitboard capMask = bb_of(epCaptureSq);
-        const Color capColor = (fromColor == WHITE) ? BLACK : WHITE;
-        m_position.bb[capColor][PAWN] &= ~capMask;
-        m_position.recomputeOcc();
-    }
-
-    const Piece promoPiece = move_piece_from_code(move_promo(move));
-    if (promoPiece != NO_PIECE && fromPiece == PAWN) {
-        const Bitboard toMask = bb_of(toSq);
-        m_position.bb[fromColor][PAWN] &= ~toMask;
-        m_position.bb[fromColor][promoPiece] |= toMask;
-        m_position.recomputeOcc();
-    }
-
-    if (fromPiece == KING) {
-        if (fromColor == WHITE) {
-            m_position.castling &= ~(CASTLE_WK | CASTLE_WQ);
-        } else {
-            m_position.castling &= ~(CASTLE_BK | CASTLE_BQ);
-        }
-    }
-    if (fromPiece == ROOK) {
-        if (fromSq == 0) {
-            m_position.castling &= ~CASTLE_WQ;
-        } else if (fromSq == 7) {
-            m_position.castling &= ~CASTLE_WK;
-        } else if (fromSq == 56) {
-            m_position.castling &= ~CASTLE_BQ;
-        } else if (fromSq == 63) {
-            m_position.castling &= ~CASTLE_BK;
-        }
-    }
-    if (toPiece == ROOK) {
-        if (toSq == 0) {
-            m_position.castling &= ~CASTLE_WQ;
-        } else if (toSq == 7) {
-            m_position.castling &= ~CASTLE_WK;
-        } else if (toSq == 56) {
-            m_position.castling &= ~CASTLE_BQ;
-        } else if (toSq == 63) {
-            m_position.castling &= ~CASTLE_BK;
-        }
-    }
-
-    m_position.epSquare = -1;
-    if (fromPiece == PAWN && std::abs(toSq - fromSq) == 16) {
-        m_position.epSquare = (fromColor == WHITE) ? (fromSq + 8) : (fromSq - 8);
-    }
-
-    if (fromPiece == PAWN || isCapture) {
-        m_position.halfmove = 0;
-    } else {
-        ++m_position.halfmove;
-    }
-    m_position.stm = (m_position.stm == WHITE) ? BLACK : WHITE;
-    if (m_position.stm == WHITE) {
-        ++m_position.fullmove;
+    if (appliedMove) {
+        *appliedMove = legalMove;
     }
 
     return true;
@@ -549,11 +426,12 @@ void GameController::handleBestMove(EngineSide side, const QString& move)
     }
 
     const Move parsed = moveFromUci(move);
-    if (!applyMove(parsed)) {
+    Move appliedMove = NOMOVE;
+    if (!applyMove(parsed, &appliedMove)) {
         emit errorOccurred(tr("Engine error"), tr("Invalid bestmove: %1").arg(move));
         return;
     }
-    afterMoveApplied(parsed);
+    afterMoveApplied(appliedMove);
 }
 
 void GameController::sendPositionToEngine(EngineSession& session)
@@ -574,8 +452,8 @@ void GameController::sendGoForSide(EngineSide side)
     if (!session.active || !session.readyOk || !session.client) {
         return;
     }
-    if ((side == EngineSide::White && m_position.stm != WHITE)
-        || (side == EngineSide::Black && m_position.stm != BLACK)) {
+    if ((side == EngineSide::White && m_position.get_side_to_move() != WHITE)
+        || (side == EngineSide::Black && m_position.get_side_to_move() != BLACK)) {
         return;
     }
 
@@ -588,7 +466,7 @@ void GameController::sendGoForSide(EngineSide side)
         session.client->sendGoInfinite();
     }
 
-    startSideTimer(m_position.stm);
+    startSideTimer(m_position.get_side_to_move());
 }
 
 EngineSession& GameController::sessionForSide(EngineSide side)
@@ -602,7 +480,7 @@ void GameController::afterMoveApplied(Move move)
     if (uci.isEmpty()) {
         return;
     }
-    const Color movedSide = (m_position.stm == WHITE) ? BLACK : WHITE;
+    const Color movedSide = (m_position.get_side_to_move() == WHITE) ? BLACK : WHITE;
     stopSideTimer(movedSide);
     if (m_timeControlEnabled) {
         if (movedSide == WHITE) {
@@ -616,7 +494,45 @@ void GameController::afterMoveApplied(Move move)
     m_moveHistory.append(move);
     emit positionChanged(m_position);
 
+    if (finishGameIfNoLegalMoves()) {
+        return;
+    }
+
     startTurnIfReady();
+}
+
+bool GameController::finishGameIfNoLegalMoves()
+{
+    const Color sideToMove = m_position.get_side_to_move();
+
+    MoveGen::MoveList moveList;
+    MoveGen::generate_pseudo_moves(m_position, moveList);
+    for (int i = 0; i < moveList.size; ++i) {
+        Position testPosition = m_position;
+        if (testPosition.do_move(moveList.moves[i])) {
+            return false;
+        }
+    }
+
+    const Bitboard kingBitboard = m_position.get_pieceTypes_bitboard(sideToMove, KING);
+    if (!kingBitboard) {
+        stopMatch();
+        return true;
+    }
+
+    const Square64 kingSquare{Bitboards::ctz(kingBitboard)};
+    const bool inCheck = m_position.square_is_attacked_bySide(kingSquare, ~sideToMove);
+    if (inCheck) {
+        const Color winner = ~sideToMove;
+        emit errorOccurred(tr("Checkmate"),
+                           tr("%1 wins by checkmate.")
+                               .arg(winner == WHITE ? tr("White") : tr("Black")));
+    } else {
+        emit errorOccurred(tr("Draw"), tr("Stalemate."));
+    }
+
+    stopMatch();
+    return true;
 }
 
 void GameController::startSideTimer(Color side)
@@ -649,7 +565,7 @@ void GameController::stopSideTimer(Color side)
 
 void GameController::startTurnIfReady()
 {
-    const Color sideToMove = m_position.stm;
+    const Color sideToMove = m_position.get_side_to_move();
     if (sideToMove == WHITE) {
         if (m_config.player1.type == PlayerType::Engine) {
             if (m_whiteSession.readyOk) {

@@ -1,6 +1,8 @@
 #include "match_settings_validation.h"
 
-#include "fen.h"
+#include "position.h"
+
+using namespace ChessGame;
 
 void normalizeMatchConfig(MatchConfig &config)
 {
@@ -36,7 +38,7 @@ ValidationError validateMatchConfig(const MatchConfig &config)
         const QString fenText = config.game.startPosition.trimmed();
         if (fenText.compare(QStringLiteral("startpos"), Qt::CaseInsensitive) != 0) {
             Position pos;
-            if (!setFromFen(pos, fenText.toStdString())) {
+            if (!pos.set_FEN(fenText.toStdString())) {
                 return ValidationError::InvalidStartPosition;
             }
         }
