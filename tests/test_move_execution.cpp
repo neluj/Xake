@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include <QtTest>
 #include <QSignalSpy>
 
@@ -80,6 +81,14 @@ MatchConfig humanVsHumanConfig(const QString& fen)
     return config;
 }
 
+MatchConfig timedHumanVsHumanConfig(const QString& fen, int baseTimeSeconds, int incrementSeconds = 0)
+{
+    MatchConfig config = humanVsHumanConfig(fen);
+    config.game.baseTimeSeconds = baseTimeSeconds;
+    config.game.incrementSeconds = incrementSeconds;
+    return config;
+}
+
 } // namespace
 
 class TestMoveExecution : public QObject
@@ -94,6 +103,8 @@ private slots:
     void controllerRejectsPseudoIllegalMove();
     void controllerAppliesPromotionMove();
     void controllerStopsOnCheckmate();
+    void controllerStopsOnTimeout();
+    void controllerRejectsMoveAfterTimeout();
 };
 
 void TestMoveExecution::doMoveAppliesLegalGeneratedMove()
@@ -201,6 +212,50 @@ void TestMoveExecution::controllerStopsOnCheckmate()
              QStringLiteral("7k/6Q1/6K1/8/8/8/8/8 b - - 1 1"));
 }
 
-QTEST_APPLESS_MAIN(TestMoveExecution)
+void TestMoveExecution::controllerStopsOnTimeout()
+{
+    GameController controller;
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
+    QVERIFY(controller.startMatch(timedHumanVsHumanConfig(QString::fromLatin1(kStartFen), 1), kStartFen));
+
+    QTRY_VERIFY_WITH_TIMEOUT(controller.remainingTimeMs(WHITE) == 0, 3000);
+    QVERIFY(QMetaObject::invokeMethod(&controller, "handleTurnTimeout", Qt::DirectConnection));
+
+    QCOMPARE(controller.isActive(), false);
+    QCOMPARE(stoppedSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(controller.remainingTimeMs(WHITE), 0);
+    QCOMPARE(controller.remainingTimeMs(BLACK), 1000);
+
+    const QList<QVariant> message = errorSpy.takeFirst();
+    QCOMPARE(message[0].toString(), QStringLiteral("Time"));
+    QCOMPARE(message[1].toString(), QStringLiteral("Black wins on time."));
+}
+
+void TestMoveExecution::controllerRejectsMoveAfterTimeout()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(timedHumanVsHumanConfig(QString::fromLatin1(kStartFen), 1), kStartFen));
+
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
+
+    QTRY_VERIFY_WITH_TIMEOUT(controller.remainingTimeMs(WHITE) == 0, 3000);
+
+    QVERIFY(!controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+    QCOMPARE(controller.isActive(), false);
+    QCOMPARE(stoppedSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             QString::fromLatin1(kStartFen));
+}
+
+int main(int argc, char **argv)
+{
+    QCoreApplication app(argc, argv);
+    TestMoveExecution test;
+    return QTest::qExec(&test, argc, argv);
+}
 
 #include "test_move_execution.moc"

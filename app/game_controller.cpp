@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 #include <cstdlib>
 
 using namespace ChessGame;
@@ -61,7 +62,15 @@ GameController::GameController(QObject *parent)
     : QObject(parent)
     , m_whiteSession{new UciClient(this)}
     , m_blackSession{new UciClient(this)}
+    , m_flagTimer(new QTimer(this))
 {
+    if (m_flagTimer) {
+        m_flagTimer->setSingleShot(true);
+        connect(m_flagTimer, &QTimer::timeout, this, [this]() {
+            handleTurnTimeout();
+        });
+    }
+
     connect(m_whiteSession.client, &UciClient::uciOk, this, [this]() {
         handleUciOk(EngineSide::White);
     });
@@ -95,6 +104,9 @@ bool GameController::startMatch(const MatchConfig& config,
     stopEngines();
     m_uciMoves.clear();
     m_moveHistory.clear();
+    if (m_flagTimer) {
+        m_flagTimer->stop();
+    }
 
     MatchConfig normalized = config;
     normalizeMatchConfig(normalized);
@@ -153,6 +165,9 @@ void GameController::stopMatch()
     if (!m_active) {
         return;
     }
+    if (m_flagTimer) {
+        m_flagTimer->stop();
+    }
     m_active = false;
     stopEngines();
     m_timerRunning = false;
@@ -162,6 +177,9 @@ void GameController::stopMatch()
 bool GameController::applyHumanMove(Move move)
 {
     if (!m_active) {
+        return false;
+    }
+    if (finishGameIfTimeExpired()) {
         return false;
     }
 
@@ -418,7 +436,12 @@ void GameController::handleReadyOk(EngineSide side)
 
 void GameController::handleBestMove(EngineSide side, const QString& move)
 {
+    Q_UNUSED(side);
+
     if (!m_active) {
+        return;
+    }
+    if (finishGameIfTimeExpired()) {
         return;
     }
     if (move.isEmpty() || move == "0000") {
@@ -501,6 +524,35 @@ void GameController::afterMoveApplied(Move move)
     startTurnIfReady();
 }
 
+bool GameController::finishGameIfTimeExpired()
+{
+    if (!m_active || !m_timeControlEnabled || !m_timerRunning) {
+        return false;
+    }
+    if (remainingTimeMs(m_timedSide) > 0) {
+        return false;
+    }
+
+    return finishGameOnTime(m_timedSide);
+}
+
+bool GameController::finishGameOnTime(Color flaggedSide)
+{
+    stopSideTimer(flaggedSide);
+    if (flaggedSide == WHITE) {
+        m_whiteTimeMs = 0;
+    } else {
+        m_blackTimeMs = 0;
+    }
+
+    const Color winner = ~flaggedSide;
+    emit errorOccurred(tr("Time"),
+                       tr("%1 wins on time.")
+                           .arg(winner == WHITE ? tr("White") : tr("Black")));
+    stopMatch();
+    return true;
+}
+
 bool GameController::finishGameIfNoLegalMoves()
 {
     const Color sideToMove = m_position.get_side_to_move();
@@ -540,9 +592,22 @@ void GameController::startSideTimer(Color side)
     if (!m_timeControlEnabled) {
         return;
     }
+
+    if (m_flagTimer) {
+        m_flagTimer->stop();
+    }
+
+    const qint64 remaining = (side == WHITE) ? m_whiteTimeMs : m_blackTimeMs;
     m_timedSide = side;
     m_turnTimer.restart();
     m_timerRunning = true;
+    if (remaining <= 0) {
+        finishGameOnTime(side);
+        return;
+    }
+    if (m_flagTimer) {
+        m_flagTimer->start(static_cast<int>(remaining));
+    }
 }
 
 void GameController::stopSideTimer(Color side)
@@ -553,6 +618,9 @@ void GameController::stopSideTimer(Color side)
     if (m_timedSide != side) {
         return;
     }
+    if (m_flagTimer) {
+        m_flagTimer->stop();
+    }
 
     const qint64 elapsed = m_turnTimer.elapsed();
     if (side == WHITE) {
@@ -561,6 +629,11 @@ void GameController::stopSideTimer(Color side)
         m_blackTimeMs = qMax<qint64>(0, m_blackTimeMs - elapsed);
     }
     m_timerRunning = false;
+}
+
+void GameController::handleTurnTimeout()
+{
+    finishGameIfTimeExpired();
 }
 
 void GameController::startTurnIfReady()

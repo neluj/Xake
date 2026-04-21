@@ -11,6 +11,7 @@
 #include <string>
 
 class UciClient;
+class QTimer;
 
 enum class EngineSide {
     White,
@@ -50,6 +51,9 @@ signals:
     void matchStopped();
     void errorOccurred(const QString& title, const QString& message);
 
+private slots:
+    void handleTurnTimeout();
+
 private:
     ChessGame::Move moveFromUci(const QString& move) const;
     ChessGame::Move resolveMoveCandidate(ChessGame::Move move) const;
@@ -57,6 +61,8 @@ private:
     bool applyMove(ChessGame::Move move, ChessGame::Move* appliedMove = nullptr);
     void afterMoveApplied(ChessGame::Move move);
     bool finishGameIfNoLegalMoves();
+    bool finishGameIfTimeExpired();
+    bool finishGameOnTime(ChessGame::Color flaggedSide);
     bool startEngineForPlayer(EngineSession& session,
                               const PlayerConfig& player,
                               EngineSide side);
@@ -87,6 +93,7 @@ private:
     bool m_timerRunning = false;
     ChessGame::Color m_timedSide = ChessGame::WHITE;
     QElapsedTimer m_turnTimer;
+    QTimer *m_flagTimer = nullptr;
     QString m_logDir;
     QString m_logTag;
 };
