@@ -1,6 +1,7 @@
 #include "position.h"
 #include "attacks.h"
 
+#include <algorithm>
 #include <limits>
 #include <random>
 
@@ -386,6 +387,122 @@ bool Position::square_is_attacked_bySide(Square64 sq64, Color side) const{
            | (Attacks::kingAttacks[sq64] &  pieceTypesBitboards[side][KING])
            | (Attacks::sliding_diagonal_attacks( sq64, occupiedBitboards[COLOR_NC]) & (pieceTypesBitboards[side][BISHOP] | pieceTypesBitboards[side][QUEEN]))
            | (Attacks::sliding_side_attacks(sq64, occupiedBitboards[COLOR_NC]) & (pieceTypesBitboards[side][ROOK] | pieceTypesBitboards[side][QUEEN]));
+}
+
+Square64 Position::repetition_enpassant_square() const
+{
+    const Square64 enpassantSquare = get_enpassant_square();
+    if (enpassantSquare == SQ64_NO_SQUARE) {
+        return SQ64_NO_SQUARE;
+    }
+
+    Attacks::init();
+    const Bitboard candidatePawns =
+        Attacks::pawnAttacks[~sideToMove][enpassantSquare] & pieceTypesBitboards[sideToMove][PAWN];
+    return candidatePawns ? enpassantSquare : SQ64_NO_SQUARE;
+}
+
+bool Position::same_repetition_state(const Position& other) const
+{
+    if (sideToMove != other.sideToMove
+        || get_castling_right() != other.get_castling_right()
+        || repetition_enpassant_square() != other.repetition_enpassant_square()) {
+        return false;
+    }
+
+    for (int color = WHITE; color <= BLACK; ++color) {
+        for (int pieceType = PAWN; pieceType <= KING; ++pieceType) {
+            if (pieceTypesBitboards[color][pieceType] != other.pieceTypesBitboards[color][pieceType]) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool Position::has_threefold_repetition() const
+{
+    const int reversiblePlies = std::min<int>(get_fifty_moves_counter(), get_ply() - 1);
+    if (reversiblePlies < 4) {
+        return false;
+    }
+
+    Position previous = *this;
+    int occurrences = 1;
+    for (int undone = 0; undone + 1 < reversiblePlies && previous.get_ply() > 2; undone += 2) {
+        previous.undo_move();
+        previous.undo_move();
+
+        if (same_repetition_state(previous)) {
+            ++occurrences;
+            if (occurrences >= 3) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool Position::has_insufficient_material() const
+{
+    const Bitboard whitePawns = pieceTypesBitboards[WHITE][PAWN];
+    const Bitboard blackPawns = pieceTypesBitboards[BLACK][PAWN];
+    const Bitboard whiteRooks = pieceTypesBitboards[WHITE][ROOK];
+    const Bitboard blackRooks = pieceTypesBitboards[BLACK][ROOK];
+    const Bitboard whiteQueens = pieceTypesBitboards[WHITE][QUEEN];
+    const Bitboard blackQueens = pieceTypesBitboards[BLACK][QUEEN];
+
+    if (whitePawns || blackPawns || whiteRooks || blackRooks || whiteQueens || blackQueens) {
+        return false;
+    }
+
+    const int whiteKnights = Bitboards::cpop(pieceTypesBitboards[WHITE][KNIGHT]);
+    const int blackKnights = Bitboards::cpop(pieceTypesBitboards[BLACK][KNIGHT]);
+    const Bitboard bishops = pieceTypesBitboards[WHITE][BISHOP] | pieceTypesBitboards[BLACK][BISHOP];
+    const int totalBishops = Bitboards::cpop(bishops);
+    const int totalKnights = whiteKnights + blackKnights;
+    const int totalMinorPieces = totalBishops + totalKnights;
+
+    if (totalMinorPieces == 0) {
+        return true;
+    }
+
+    if (totalMinorPieces == 1) {
+        return true;
+    }
+
+    if (totalBishops == 0) {
+        return (whiteKnights == 2 && blackKnights == 0)
+            || (whiteKnights == 0 && blackKnights == 2);
+    }
+
+    if (totalKnights == 0) {
+        bool hasLightSquareBishop = false;
+        bool hasDarkSquareBishop = false;
+        Bitboard remainingBishops = bishops;
+
+        while (remainingBishops) {
+            const Square64 square = Square64(Bitboards::ctz(remainingBishops));
+            remainingBishops = Bitboards::clear_pieces(remainingBishops, square);
+
+            const bool isLightSquare = ((int(square_file(square)) + int(square_rank(square))) % 2) == 0;
+            if (isLightSquare) {
+                hasLightSquareBishop = true;
+            } else {
+                hasDarkSquareBishop = true;
+            }
+
+            if (hasLightSquareBishop && hasDarkSquareBishop) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    return false;
 }
 
 

@@ -30,7 +30,9 @@ public:
     Piece get_mailbox_piece(Square64 square) const;
     Bitboard get_pieceTypes_bitboard(Color color, PieceType pieceType) const;
     Bitboard get_occupied_bitboard(Color color) const;
-    bool square_is_attacked_bySide(Square64 square, Color side) const; 
+    bool square_is_attacked_bySide(Square64 square, Color side) const;
+    bool has_threefold_repetition() const;
+    bool has_insufficient_material() const;
 
     //Move related functions
     bool do_move(Move move);
@@ -45,6 +47,8 @@ private:
     void clear_pieceTypes_bitboards();
     void clear_occupied_bitboards();
     void clear_mailbox();
+    bool same_repetition_state(const Position& other) const;
+    Square64 repetition_enpassant_square() const;
     
     Bitboard pieceTypesBitboards[COLOR_SIZE][PIECETYPE_SIZE];
     Bitboard occupiedBitboards[COLOR_SIZE];

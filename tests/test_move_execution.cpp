@@ -12,6 +12,8 @@ using namespace ChessGame;
 namespace {
 
 constexpr char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+constexpr char kInsufficientMaterialAfterCaptureFen[] = "4k3/8/8/8/8/8/3b4/2N1K3 w - - 0 1";
+constexpr char kInsufficientMaterialAfterCaptureResultFen[] = "4k3/8/8/8/8/8/3K4/2N5 b - - 0 1";
 
 int squareFrom(char file, char rank)
 {
@@ -103,6 +105,9 @@ private slots:
     void controllerRejectsPseudoIllegalMove();
     void controllerAppliesPromotionMove();
     void controllerStopsOnCheckmate();
+    void controllerStopsOnThreefoldRepetition();
+    void controllerStopsOnFiftyMoveRule();
+    void controllerStopsOnInsufficientMaterialAfterCapture();
     void controllerStopsOnTimeout();
     void controllerRejectsMoveAfterTimeout();
 };
@@ -210,6 +215,80 @@ void TestMoveExecution::controllerStopsOnCheckmate()
     QCOMPARE(message[1].toString(), QStringLiteral("White wins by checkmate."));
     QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
              QStringLiteral("7k/6Q1/6K1/8/8/8/8/8 b - - 1 1"));
+}
+
+void TestMoveExecution::controllerStopsOnThreefoldRepetition()
+{
+    const QString fen = QStringLiteral("4k1n1/8/8/8/8/8/8/1N2K3 w - - 0 1");
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(fen), fen.toStdString()));
+
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
+
+    QVERIFY(controller.applyHumanMove(makeCandidate('b', '1', 'a', '3')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('g', '8', 'h', '6')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('a', '3', 'b', '1')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('h', '6', 'g', '8')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('b', '1', 'a', '3')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('g', '8', 'h', '6')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('a', '3', 'b', '1')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('h', '6', 'g', '8')));
+
+    QCOMPARE(controller.isActive(), false);
+    QCOMPARE(stoppedSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             QStringLiteral("4k1n1/8/8/8/8/8/8/1N2K3 w - - 8 5"));
+
+    const QList<QVariant> message = errorSpy.takeFirst();
+    QCOMPARE(message[0].toString(), QStringLiteral("Draw"));
+    QCOMPARE(message[1].toString(), QStringLiteral("Draw by repetition."));
+}
+
+void TestMoveExecution::controllerStopsOnFiftyMoveRule()
+{
+    const QString fen = QStringLiteral("4k3/8/8/8/8/8/4Q3/4K3 w - - 99 1");
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(fen), fen.toStdString()));
+
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
+
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '2', 'e', '3')));
+
+    QCOMPARE(controller.isActive(), false);
+    QCOMPARE(stoppedSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             QStringLiteral("4k3/8/8/8/8/4Q3/8/4K3 b - - 100 1"));
+
+    const QList<QVariant> message = errorSpy.takeFirst();
+    QCOMPARE(message[0].toString(), QStringLiteral("Draw"));
+    QCOMPARE(message[1].toString(), QStringLiteral("Draw by fifty-move rule."));
+}
+
+void TestMoveExecution::controllerStopsOnInsufficientMaterialAfterCapture()
+{
+    const QString fen = QString::fromLatin1(kInsufficientMaterialAfterCaptureFen);
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(fen), fen.toStdString()));
+
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
+
+    // Kxd2 leaves king + knight versus king, which is insufficient material.
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '1', 'd', '2')));
+
+    QCOMPARE(controller.isActive(), false);
+    QCOMPARE(stoppedSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             QString::fromLatin1(kInsufficientMaterialAfterCaptureResultFen));
+
+    const QList<QVariant> message = errorSpy.takeFirst();
+    QCOMPARE(message[0].toString(), QStringLiteral("Draw"));
+    QCOMPARE(message[1].toString(), QStringLiteral("Draw by insufficient material."));
 }
 
 void TestMoveExecution::controllerStopsOnTimeout()

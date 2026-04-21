@@ -61,6 +61,8 @@ private:
     bool applyMove(ChessGame::Move move, ChessGame::Move* appliedMove = nullptr);
     void afterMoveApplied(ChessGame::Move move);
     bool finishGameIfNoLegalMoves();
+    bool finishGameIfDraw();
+    bool finishGameAsDraw(const QString& message);
     bool finishGameIfTimeExpired();
     bool finishGameOnTime(ChessGame::Color flaggedSide);
     bool startEngineForPlayer(EngineSession& session,

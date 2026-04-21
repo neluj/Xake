@@ -156,6 +156,9 @@ bool GameController::startMatch(const MatchConfig& config,
 
     emit matchStarted(m_config);
     emit positionChanged(m_position);
+    if (finishGameIfNoLegalMoves() || finishGameIfDraw()) {
+        return true;
+    }
     startTurnIfReady();
     return true;
 }
@@ -520,6 +523,9 @@ void GameController::afterMoveApplied(Move move)
     if (finishGameIfNoLegalMoves()) {
         return;
     }
+    if (finishGameIfDraw()) {
+        return;
+    }
 
     startTurnIfReady();
 }
@@ -549,6 +555,30 @@ bool GameController::finishGameOnTime(Color flaggedSide)
     emit errorOccurred(tr("Time"),
                        tr("%1 wins on time.")
                            .arg(winner == WHITE ? tr("White") : tr("Black")));
+    stopMatch();
+    return true;
+}
+
+bool GameController::finishGameIfDraw()
+{
+    if (m_position.get_fifty_moves_counter() >= 100) {
+        return finishGameAsDraw(tr("Draw by fifty-move rule."));
+    }
+
+    if (m_position.has_threefold_repetition()) {
+        return finishGameAsDraw(tr("Draw by repetition."));
+    }
+
+    if (m_position.has_insufficient_material()) {
+        return finishGameAsDraw(tr("Draw by insufficient material."));
+    }
+
+    return false;
+}
+
+bool GameController::finishGameAsDraw(const QString& message)
+{
+    emit errorOccurred(tr("Draw"), message);
     stopMatch();
     return true;
 }
