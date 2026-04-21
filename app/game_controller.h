@@ -4,6 +4,7 @@
 #include "position.h"
 
 #include <QObject>
+#include <QProcess>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -12,6 +13,7 @@
 
 class UciClient;
 class QTimer;
+class TestMoveExecution;
 
 enum class EngineSide {
     White,
@@ -23,11 +25,13 @@ struct EngineSession {
     bool active = false;
     bool uciOk = false;
     bool readyOk = false;
+    QString lastErrorLine;
 };
 
 class GameController : public QObject
 {
     Q_OBJECT
+    friend class TestMoveExecution;
 
 public:
     explicit GameController(QObject *parent = nullptr);
@@ -72,6 +76,8 @@ private:
     void startSideTimer(ChessGame::Color side);
     void stopSideTimer(ChessGame::Color side);
     void startTurnIfReady();
+    void handleEngineError(EngineSide side, const QString& line);
+    void handleEngineExited(EngineSide side, int exitCode, QProcess::ExitStatus status);
     void handleUciOk(EngineSide side);
     void handleReadyOk(EngineSide side);
     void handleBestMove(EngineSide side, const QString& move);

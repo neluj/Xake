@@ -56,6 +56,11 @@ Move makeMoveCandidate(int fromSq, int toSq, PieceType promotion)
     return make_quiet_move(Square64(fromSq), Square64(toSq), promotionMove(promotion));
 }
 
+QString engineSideName(EngineSide side)
+{
+    return (side == EngineSide::White) ? QStringLiteral("White") : QStringLiteral("Black");
+}
+
 } // namespace
 
 GameController::GameController(QObject *parent)
@@ -82,6 +87,14 @@ GameController::GameController(QObject *parent)
         Q_UNUSED(ponder);
         handleBestMove(EngineSide::White, move);
     });
+    connect(m_whiteSession.client, &UciClient::engineError, this,
+            [this](const QString& line) {
+        handleEngineError(EngineSide::White, line);
+    });
+    connect(m_whiteSession.client, &UciClient::engineExited, this,
+            [this](int exitCode, QProcess::ExitStatus status) {
+        handleEngineExited(EngineSide::White, exitCode, status);
+    });
 
     connect(m_blackSession.client, &UciClient::uciOk, this, [this]() {
         handleUciOk(EngineSide::Black);
@@ -93,6 +106,14 @@ GameController::GameController(QObject *parent)
             [this](const QString& move, const QString& ponder) {
         Q_UNUSED(ponder);
         handleBestMove(EngineSide::Black, move);
+    });
+    connect(m_blackSession.client, &UciClient::engineError, this,
+            [this](const QString& line) {
+        handleEngineError(EngineSide::Black, line);
+    });
+    connect(m_blackSession.client, &UciClient::engineExited, this,
+            [this](int exitCode, QProcess::ExitStatus status) {
+        handleEngineExited(EngineSide::Black, exitCode, status);
     });
 }
 
@@ -241,9 +262,10 @@ bool GameController::startEngineForPlayer(EngineSession& session,
         return false;
     }
 
-    session.active = true;
+    session.active = false;
     session.uciOk = false;
     session.readyOk = false;
+    session.lastErrorLine.clear();
 
     const QString effectiveLogDir = m_logDir.isEmpty()
         ? QDir::current().filePath("logs")
@@ -269,6 +291,7 @@ bool GameController::startEngineForPlayer(EngineSession& session,
         return false;
     }
 
+    session.active = true;
     session.client->sendUci();
 
     return true;
@@ -277,20 +300,22 @@ bool GameController::startEngineForPlayer(EngineSession& session,
 void GameController::stopEngines()
 {
     if (m_whiteSession.client) {
-        m_whiteSession.client->sendStop();
-        m_whiteSession.client->sendQuit();
-        m_whiteSession.client->stopProcess();
         m_whiteSession.active = false;
         m_whiteSession.uciOk = false;
         m_whiteSession.readyOk = false;
+        m_whiteSession.lastErrorLine.clear();
+        m_whiteSession.client->sendStop();
+        m_whiteSession.client->sendQuit();
+        m_whiteSession.client->stopProcess();
     }
     if (m_blackSession.client) {
-        m_blackSession.client->sendStop();
-        m_blackSession.client->sendQuit();
-        m_blackSession.client->stopProcess();
         m_blackSession.active = false;
         m_blackSession.uciOk = false;
         m_blackSession.readyOk = false;
+        m_blackSession.lastErrorLine.clear();
+        m_blackSession.client->sendStop();
+        m_blackSession.client->sendQuit();
+        m_blackSession.client->stopProcess();
     }
 }
 
@@ -435,6 +460,55 @@ void GameController::handleReadyOk(EngineSide side)
     session.readyOk = true;
     session.client->sendNewGame();
     startTurnIfReady();
+}
+
+void GameController::handleEngineError(EngineSide side, const QString& line)
+{
+    EngineSession& session = sessionForSide(side);
+    if (!session.active) {
+        return;
+    }
+
+    const QString trimmed = line.trimmed();
+    if (!trimmed.isEmpty()) {
+        session.lastErrorLine = trimmed;
+    }
+}
+
+void GameController::handleEngineExited(EngineSide side, int exitCode, QProcess::ExitStatus status)
+{
+    EngineSession& session = sessionForSide(side);
+    if (!session.active) {
+        return;
+    }
+
+    session.active = false;
+    session.uciOk = false;
+    session.readyOk = false;
+
+    if (!m_active) {
+        session.lastErrorLine.clear();
+        return;
+    }
+
+    QString detail;
+    if (!session.lastErrorLine.isEmpty()) {
+        detail = tr(" Last error: %1").arg(session.lastErrorLine);
+    }
+
+    const QString sideName = engineSideName(side);
+    const QString statusText = (status == QProcess::CrashExit)
+        ? tr("crashed")
+        : tr("exited");
+    emit errorOccurred(
+        tr("Engine error"),
+        tr("%1 engine %2 (code %3).%4")
+            .arg(sideName)
+            .arg(statusText)
+            .arg(exitCode)
+            .arg(detail));
+    session.lastErrorLine.clear();
+    stopMatch();
 }
 
 void GameController::handleBestMove(EngineSide side, const QString& move)

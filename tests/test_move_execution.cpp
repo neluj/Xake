@@ -110,6 +110,7 @@ private slots:
     void controllerStopsOnInsufficientMaterialAfterCapture();
     void controllerStopsOnTimeout();
     void controllerRejectsMoveAfterTimeout();
+    void controllerStopsWhenEngineExits();
 };
 
 void TestMoveExecution::doMoveAppliesLegalGeneratedMove()
@@ -328,6 +329,28 @@ void TestMoveExecution::controllerRejectsMoveAfterTimeout()
     QCOMPARE(errorSpy.count(), 1);
     QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
              QString::fromLatin1(kStartFen));
+}
+
+void TestMoveExecution::controllerStopsWhenEngineExits()
+{
+    GameController controller;
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)), kStartFen));
+
+    controller.m_whiteSession.active = true;
+    controller.handleEngineError(EngineSide::White, QStringLiteral("simulated engine failure"));
+    controller.handleEngineExited(EngineSide::White, 17, QProcess::NormalExit);
+
+    QCOMPARE(stoppedSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(controller.isActive(), false);
+
+    const QList<QVariant> message = errorSpy.takeFirst();
+    QCOMPARE(message[0].toString(), QStringLiteral("Engine error"));
+    QVERIFY(message[1].toString().contains(QStringLiteral("White engine exited")));
+    QVERIFY(message[1].toString().contains(QStringLiteral("code 17")));
+    QVERIFY(message[1].toString().contains(QStringLiteral("simulated engine failure")));
 }
 
 int main(int argc, char **argv)
