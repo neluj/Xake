@@ -27,3 +27,17 @@ target_include_directories(move_execution_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
 target_link_libraries(move_execution_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME move_execution_tests COMMAND move_execution_tests)
+
+add_executable(perft_tests
+    test_perft.cpp
+)
+
+target_link_libraries(perft_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME perft_tests COMMAND perft_tests)
+
+add_executable(perft_runner
+    perft_runner.cpp
+)
+
+target_link_libraries(perft_runner PRIVATE chess_core)
