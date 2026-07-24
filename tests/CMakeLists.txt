@@ -16,6 +16,17 @@ target_link_libraries(match_settings_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME match_settings_tests COMMAND match_settings_tests)
 
+add_executable(match_settings_widget_tests
+    test_match_settings_widget.cpp
+    ${CMAKE_SOURCE_DIR}/app/match_settings_widget.cpp
+    ${CMAKE_SOURCE_DIR}/app/match_settings_widget.ui
+)
+
+target_include_directories(match_settings_widget_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(match_settings_widget_tests PRIVATE Qt6::Test Qt6::Widgets)
+
+add_test(NAME match_settings_widget_tests COMMAND match_settings_widget_tests)
+
 add_executable(move_execution_tests
     test_move_execution.cpp
     ${CMAKE_SOURCE_DIR}/app/game_controller.cpp

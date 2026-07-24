@@ -27,6 +27,8 @@ public:
     GameConfig gameConfig() const;
 
 private:
+    void applyTimeControlSelection();
+    void rememberCustomTimeSettings();
     void applyPlayerType(QComboBox *typeCombo,
                          QStackedWidget *stack,
                          QLineEdit *nameEdit,
@@ -39,4 +41,7 @@ private:
 
     Ui::MatchSettingsWidget *ui;
     QString m_lastEngineDir;
+    int m_customBaseTimeSeconds = 300;
+    int m_customIncrementSeconds = 0;
+    int m_customMovesToGo = 0;
 };
