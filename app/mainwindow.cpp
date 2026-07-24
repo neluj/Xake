@@ -23,10 +23,16 @@ const char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0
 
 QString formatClockMs(qint64 ms)
 {
-    if (ms < 0) {
-        ms = 0;
-    }
+    ms = qMax<qint64>(0, ms);
+
     const qint64 totalSeconds = ms / 1000;
+    if (ms < 10000) {
+        const qint64 tenths = (ms % 1000) / 100;
+        return QString("%1.%2")
+            .arg(totalSeconds, 2, 10, QChar('0'))
+            .arg(tenths);
+    }
+
     const qint64 minutes = totalSeconds / 60;
     const qint64 seconds = totalSeconds % 60;
     return QString("%1:%2")
@@ -77,7 +83,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     if (m_clockUiTimer) {
-        m_clockUiTimer->setInterval(200);
+        m_clockUiTimer->setInterval(100);
         connect(m_clockUiTimer, &QTimer::timeout, this, [this]() {
             updateClockUi();
         });

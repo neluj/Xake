@@ -29,6 +29,9 @@
             <property name="frameShape">
              <enum>QFrame::StyledPanel</enum>
             </property>
+            <property name="digitCount">
+             <number>5</number>
+            </property>
             <property name="segmentStyle">
              <enum>QLCDNumber::Flat</enum>
             </property>
@@ -38,6 +41,9 @@
            <widget class="QLCDNumber" name="blackTimeLcd">
             <property name="frameShape">
              <enum>QFrame::StyledPanel</enum>
+            </property>
+            <property name="digitCount">
+             <number>5</number>
             </property>
             <property name="segmentStyle">
              <enum>QLCDNumber::Flat</enum>
