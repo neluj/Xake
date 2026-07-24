@@ -11,8 +11,12 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QLabel>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
 #include <QString>
+#include <QSvgRenderer>
 
 #include <string>
 
@@ -21,6 +25,42 @@ using namespace Xake;
 namespace {
 
 const char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const char kWhiteColorResource[] = ":/assets/colors/color_w.svg";
+const char kBlackColorResource[] = ":/assets/colors/color_b.svg";
+constexpr int kColorIndicatorSize = 28;
+
+QPixmap colorIndicatorPixmap(Color color, int size)
+{
+    QPixmap pixmap(size, size);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // The supplied white SVG needs a subtle outline on light widget backgrounds.
+    if (color == WHITE) {
+        const qreal radius = size * 18.0 / 45.0 + 1.0;
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(96, 96, 96));
+        painter.drawEllipse(QPointF(size / 2.0, size / 2.0), radius, radius);
+    }
+
+    QSvgRenderer renderer(color == WHITE ? QString::fromLatin1(kWhiteColorResource)
+                                         : QString::fromLatin1(kBlackColorResource));
+    renderer.render(&painter, QRectF(0, 0, size, size));
+    return pixmap;
+}
+
+void setColorIndicator(QLabel *label, Color color)
+{
+    if (!label) {
+        return;
+    }
+
+    label->setMinimumSize(kColorIndicatorSize, kColorIndicatorSize);
+    label->setPixmap(colorIndicatorPixmap(color, kColorIndicatorSize));
+    label->setAlignment(Qt::AlignCenter);
+}
 
 QString formatClockMs(qint64 ms)
 {
@@ -107,6 +147,10 @@ MainWindow::MainWindow(QWidget *parent)
 {
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
+    setColorIndicator(ui->labelWhiteTime, WHITE);
+    setColorIndicator(ui->labelBlackTime, BLACK);
+    setColorIndicator(ui->labelTournamentWhiteColor, WHITE);
+    setColorIndicator(ui->labelTournamentBlackColor, BLACK);
     setTournamentTabActive(false);
 
     if (m_clockUiTimer) {
@@ -209,7 +253,7 @@ MainWindow::MainWindow(QWidget *parent)
             [this](int gameNumber, const GameResult& result) {
         if (ui && ui->tournamentHistoryText) {
             ui->tournamentHistoryText->appendPlainText(
-                tr("Game %1: White vs Black: %2")
+                tr("Game %1: %2")
                     .arg(gameNumber)
                     .arg(gameResultNotation(result.outcome)));
         }
@@ -218,7 +262,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentFinished, this,
             [this](const TournamentSummary& summary) {
-        const QString message = tr("Tournament finished after %1 games.\nWhite vs Black: %2 - %3 - %4")
+        const QString message = tr("Tournament finished after %1 games.\nResult: %2 - %3 - %4")
             .arg(summary.completedGames)
             .arg(summary.whiteWins)
             .arg(summary.draws)
@@ -373,7 +417,7 @@ void MainWindow::updateTournamentScore(const TournamentSummary& summary)
     }
 
     ui->labelTournamentScore->setText(
-        tr("White vs Black: %1 - %2 - %3")
+        tr(": %1 - %2 - %3")
             .arg(summary.whiteWins)
             .arg(summary.draws)
             .arg(summary.blackWins));
@@ -385,8 +429,8 @@ void MainWindow::updatePlayerNames(const MatchConfig& match)
         return;
     }
 
-    ui->labelWhitePlayer->setText(playerDisplayName(match.player1, tr("White player")));
-    ui->labelBlackPlayer->setText(playerDisplayName(match.player2, tr("Black player")));
+    ui->labelWhitePlayer->setText(playerDisplayName(match.player1, tr("Player")));
+    ui->labelBlackPlayer->setText(playerDisplayName(match.player2, tr("Player")));
 }
 
 void MainWindow::updateClockUi()
@@ -415,5 +459,5 @@ void MainWindow::updateSideToMoveLabel(const Xake::Position& position)
     if (!ui || !ui->labelSideToMove) {
         return;
     }
-    ui->labelSideToMove->setText(position.get_side_to_move() == WHITE ? tr("White") : tr("Black"));
+    setColorIndicator(ui->labelSideToMove, position.get_side_to_move());
 }

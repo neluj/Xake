@@ -53,7 +53,7 @@
           <item row="1" column="0">
            <widget class="QLabel" name="labelWhiteTime">
             <property name="text">
-             <string>White</string>
+             <string/>
             </property>
             <property name="alignment">
              <set>Qt::AlignCenter</set>
@@ -63,7 +63,7 @@
           <item row="1" column="1">
            <widget class="QLabel" name="labelBlackTime">
             <property name="text">
-             <string>Black</string>
+             <string/>
             </property>
             <property name="alignment">
              <set>Qt::AlignCenter</set>
@@ -203,25 +203,81 @@
              <property name="alignment">
               <set>Qt::AlignCenter</set>
              </property>
-            </widget>
+           </widget>
            </item>
            <item>
-            <widget class="QLabel" name="labelTournamentScore">
-             <property name="font">
-              <font>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
+            <layout class="QHBoxLayout" name="tournamentScoreLayout">
+             <item>
+              <spacer name="tournamentScoreLeftSpacer">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelTournamentWhiteColor">
+               <property name="text">
+                <string/>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelTournamentVersus">
+               <property name="font">
+                <font>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string>vs</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelTournamentBlackColor">
+               <property name="text">
+                <string/>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelTournamentScore">
+               <property name="font">
+                <font>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="tournamentScoreRightSpacer">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
            </item>
            <item>
             <widget class="QPlainTextEdit" name="tournamentHistoryText">
