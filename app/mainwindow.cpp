@@ -10,6 +10,7 @@
 #include <QAction>
 #include <QDateTime>
 #include <QDir>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QString>
 
@@ -38,6 +39,31 @@ QString formatClockMs(qint64 ms)
     return QString("%1:%2")
         .arg(minutes, 2, 10, QChar('0'))
         .arg(seconds, 2, 10, QChar('0'));
+}
+
+QString playerDisplayName(const PlayerConfig& player, const QString& fallback)
+{
+    const QString name = player.name.trimmed();
+    if (!name.isEmpty()) {
+        return name;
+    }
+
+    const QString engineName = QFileInfo(player.enginePath).completeBaseName();
+    return engineName.isEmpty() ? fallback : engineName;
+}
+
+QString gameResultNotation(GameOutcome outcome)
+{
+    switch (outcome) {
+    case GameOutcome::WhiteWin:
+        return QStringLiteral("1-0");
+    case GameOutcome::BlackWin:
+        return QStringLiteral("0-1");
+    case GameOutcome::Draw:
+        return QStringLiteral("1/2-1/2");
+    }
+
+    return QString();
 }
 
 std::string resolveStartFen(const GameConfig& gameConfig)
@@ -81,6 +107,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
+    setTournamentTabActive(false);
 
     if (m_clockUiTimer) {
         m_clockUiTimer->setInterval(100);
@@ -121,7 +148,8 @@ MainWindow::MainWindow(QWidget *parent)
         updateClockUi();
     });
 
-    connect(m_gameController, &GameController::matchStarted, this, [this](const MatchConfig&) {
+    connect(m_gameController, &GameController::matchStarted, this, [this](const MatchConfig& match) {
+        updatePlayerNames(match);
         updateSideToMoveLabel(m_gameController->currentPosition());
         updateClockUi();
         if (m_clockUiTimer) {
@@ -136,6 +164,10 @@ MainWindow::MainWindow(QWidget *parent)
         updateClockUi();
         if (ui && ui->labelSideToMove) {
             ui->labelSideToMove->clear();
+        }
+        if (ui && ui->labelWhitePlayer && ui->labelBlackPlayer) {
+            ui->labelWhitePlayer->clear();
+            ui->labelBlackPlayer->clear();
         }
     });
 
@@ -153,41 +185,67 @@ MainWindow::MainWindow(QWidget *parent)
         QMessageBox::warning(this, title, message);
     });
 
+    connect(m_tournamentRunner, &TournamentRunner::tournamentStarted, this,
+            [this](int totalGames) {
+        setTournamentTabActive(true);
+        resetTournamentPanel(totalGames);
+    });
+
     connect(m_tournamentRunner, &TournamentRunner::tournamentGameStarted, this,
             [this](int gameNumber, int totalGames, const MatchConfig&) {
+        if (ui && ui->labelTournamentStatus) {
+            ui->labelTournamentStatus->setText(
+                tr("Game %1 of %2")
+                    .arg(gameNumber)
+                    .arg(totalGames));
+        }
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(
                 tr("Tournament game %1 of %2.").arg(gameNumber).arg(totalGames));
         }
     });
 
+    connect(m_tournamentRunner, &TournamentRunner::tournamentGameFinished, this,
+            [this](int gameNumber, const GameResult& result) {
+        if (ui && ui->tournamentHistoryText) {
+            ui->tournamentHistoryText->appendPlainText(
+                tr("Game %1: White vs Black: %2")
+                    .arg(gameNumber)
+                    .arg(gameResultNotation(result.outcome)));
+        }
+        updateTournamentScore(m_tournamentRunner->summary());
+    });
+
     connect(m_tournamentRunner, &TournamentRunner::tournamentFinished, this,
             [this](const TournamentSummary& summary) {
-        const TournamentConfig& config = m_state.lastTournament;
-        const QString player1 = config.match.player1.name.isEmpty()
-            ? tr("Player 1")
-            : config.match.player1.name;
-        const QString player2 = config.match.player2.name.isEmpty()
-            ? tr("Player 2")
-            : config.match.player2.name;
-        const QString message = tr("Tournament finished after %1 games.\n%2: %3 wins\n%4: %5 wins\nDraws: %6")
+        const QString message = tr("Tournament finished after %1 games.\nWhite vs Black: %2 - %3 - %4")
             .arg(summary.completedGames)
-            .arg(player1)
-            .arg(summary.player1Wins)
-            .arg(player2)
-            .arg(summary.player2Wins)
-            .arg(summary.draws);
+            .arg(summary.whiteWins)
+            .arg(summary.draws)
+            .arg(summary.blackWins);
+        if (ui && ui->labelTournamentStatus) {
+            ui->labelTournamentStatus->setText(tr("Tournament finished"));
+        }
+        updateTournamentScore(summary);
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(message);
         }
+        setTournamentTabActive(false);
         QMessageBox::information(this, tr("Tournament finished"), message);
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentAborted, this,
             [this](const QString& title, const QString& message) {
+        if (ui && ui->labelTournamentStatus) {
+            ui->labelTournamentStatus->setText(tr("Tournament aborted"));
+        }
+        if (ui && ui->tournamentHistoryText) {
+            ui->tournamentHistoryText->appendPlainText(tr("Aborted: %1").arg(message));
+        }
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(tr("%1: %2").arg(title, message));
         }
+        setTournamentTabActive(false);
     });
 
     if (ui && ui->board) {
@@ -199,6 +257,10 @@ MainWindow::MainWindow(QWidget *parent)
     updateClockUi();
     if (ui && ui->labelSideToMove) {
         ui->labelSideToMove->clear();
+    }
+    if (ui && ui->labelWhitePlayer && ui->labelBlackPlayer) {
+        ui->labelWhitePlayer->clear();
+        ui->labelBlackPlayer->clear();
     }
 }
 
@@ -255,6 +317,76 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
     }
 
     return m_gameController->startMatch(config, fen, sessionDir, sessionTag);
+}
+
+void MainWindow::setTournamentTabActive(bool active)
+{
+    if (!ui || !ui->tabWidget || !ui->tabTournament) {
+        return;
+    }
+
+    const int index = ui->tabWidget->indexOf(ui->tabTournament);
+    if (index < 0) {
+        return;
+    }
+
+    if (!active && ui->tabWidget->currentIndex() == index) {
+        ui->tabWidget->setCurrentIndex(0);
+    }
+    ui->tabWidget->setTabEnabled(index, active);
+    if (active) {
+        ui->tabWidget->setCurrentIndex(index);
+    }
+}
+
+void MainWindow::resetTournamentPanel(int totalGames)
+{
+    if (!ui) {
+        return;
+    }
+
+    const TournamentConfig& config = m_state.lastTournament;
+    if (ui->labelTournamentStatus) {
+        ui->labelTournamentStatus->setText(tr("Preparing tournament"));
+    }
+    if (ui->labelTournamentInfo) {
+        ui->labelTournamentInfo->setText(
+            tr("Type: %1\nFormat: %2 rounds x %3 games (%4 total)\nTime: %5 %6+%7")
+                .arg(config.tournamentType)
+                .arg(config.rounds)
+                .arg(config.gamesPerPairing)
+                .arg(totalGames)
+                .arg(config.match.game.timeControl)
+                .arg(config.match.game.baseTimeSeconds)
+                .arg(config.match.game.incrementSeconds));
+    }
+    if (ui->tournamentHistoryText) {
+        ui->tournamentHistoryText->clear();
+    }
+    updateTournamentScore(m_tournamentRunner->summary());
+}
+
+void MainWindow::updateTournamentScore(const TournamentSummary& summary)
+{
+    if (!ui || !ui->labelTournamentScore) {
+        return;
+    }
+
+    ui->labelTournamentScore->setText(
+        tr("White vs Black: %1 - %2 - %3")
+            .arg(summary.whiteWins)
+            .arg(summary.draws)
+            .arg(summary.blackWins));
+}
+
+void MainWindow::updatePlayerNames(const MatchConfig& match)
+{
+    if (!ui || !ui->labelWhitePlayer || !ui->labelBlackPlayer) {
+        return;
+    }
+
+    ui->labelWhitePlayer->setText(playerDisplayName(match.player1, tr("White player")));
+    ui->labelBlackPlayer->setText(playerDisplayName(match.player2, tr("Black player")));
 }
 
 void MainWindow::updateClockUi()

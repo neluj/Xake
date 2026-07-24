@@ -10,6 +10,7 @@
 
 class UciClient;
 class TournamentRunner;
+struct TournamentSummary;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -28,6 +29,10 @@ public:
 private:
     void configureEngine();
     bool startMatch(const MatchConfig& config, const TournamentConfig* tournament);
+    void setTournamentTabActive(bool active);
+    void resetTournamentPanel(int totalGames);
+    void updateTournamentScore(const TournamentSummary& summary);
+    void updatePlayerNames(const MatchConfig& match);
     void updateClockUi();
     void updateSideToMoveLabel(const Xake::Position& position);
 

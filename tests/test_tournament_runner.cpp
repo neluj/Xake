@@ -82,6 +82,10 @@ void TestTournamentRunner::playsAllGamesAndAlternatesColors()
 
     QVERIFY(controller.applyHumanMove(makeCandidate('f', '7', 'g', '7')));
     QTRY_COMPARE(startedGames, 2);
+    QCOMPARE(runner.summary().completedGames, 1);
+    QCOMPARE(runner.summary().player1Wins, 1);
+    QCOMPARE(runner.summary().whiteWins, 1);
+    QCOMPARE(runner.summary().blackWins, 0);
     QCOMPARE(secondGame.player1.name, QStringLiteral("Player 2"));
     QCOMPARE(secondGame.player2.name, QStringLiteral("Player 1"));
 
@@ -93,6 +97,8 @@ void TestTournamentRunner::playsAllGamesAndAlternatesColors()
     QCOMPARE(summary.player1Wins, 1);
     QCOMPARE(summary.player2Wins, 1);
     QCOMPARE(summary.draws, 0);
+    QCOMPARE(summary.whiteWins, 2);
+    QCOMPARE(summary.blackWins, 0);
     QCOMPARE(runner.isActive(), false);
 }
 
@@ -126,6 +132,8 @@ void TestTournamentRunner::drawsAtTournamentMoveLimit()
     QCOMPARE(result.termination, GameTermination::MoveLimit);
     QCOMPARE(summary.completedGames, 1);
     QCOMPARE(summary.draws, 1);
+    QCOMPARE(summary.whiteWins, 0);
+    QCOMPARE(summary.blackWins, 0);
 }
 
 int main(int argc, char **argv)

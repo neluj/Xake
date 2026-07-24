@@ -61,6 +61,11 @@ bool TournamentRunner::isActive() const
     return m_active;
 }
 
+TournamentSummary TournamentRunner::summary() const
+{
+    return m_summary;
+}
+
 void TournamentRunner::startNextGame()
 {
     if (!m_active) {
@@ -99,6 +104,7 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
     ++m_summary.completedGames;
     switch (result.outcome) {
     case GameOutcome::WhiteWin:
+        ++m_summary.whiteWins;
         if (m_currentColorsSwapped) {
             ++m_summary.player2Wins;
         } else {
@@ -106,6 +112,7 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
         }
         break;
     case GameOutcome::BlackWin:
+        ++m_summary.blackWins;
         if (m_currentColorsSwapped) {
             ++m_summary.player1Wins;
         } else {

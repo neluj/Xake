@@ -14,6 +14,8 @@ struct TournamentSummary {
     int player1Wins = 0;
     int player2Wins = 0;
     int draws = 0;
+    int whiteWins = 0;
+    int blackWins = 0;
 };
 
 Q_DECLARE_METATYPE(TournamentSummary)
@@ -30,6 +32,7 @@ public:
                const QString& logDir,
                const QString& sessionTag);
     bool isActive() const;
+    TournamentSummary summary() const;
 
 signals:
     void tournamentStarted(int totalGames);
