@@ -92,18 +92,26 @@ QString playerDisplayName(const PlayerConfig& player, const QString& fallback)
     return engineName.isEmpty() ? fallback : engineName;
 }
 
-QString gameResultNotation(GameOutcome outcome)
+QString gameResultText(GameOutcome outcome)
 {
     switch (outcome) {
     case GameOutcome::WhiteWin:
-        return QStringLiteral("1-0");
+        return QStringLiteral("W: 1-0");
     case GameOutcome::BlackWin:
-        return QStringLiteral("0-1");
+        return QStringLiteral("L: 0-1");
     case GameOutcome::Draw:
-        return QStringLiteral("1/2-1/2");
+        return QStringLiteral("D: 1/2-1/2");
     }
 
     return QString();
+}
+
+QString tournamentResultText(const TournamentSummary& summary)
+{
+    return QStringLiteral("W: %1 - D: %2 - L: %3")
+        .arg(summary.whiteWins)
+        .arg(summary.draws)
+        .arg(summary.blackWins);
 }
 
 std::string resolveStartFen(const GameConfig& gameConfig)
@@ -255,18 +263,16 @@ MainWindow::MainWindow(QWidget *parent)
             ui->tournamentHistoryText->appendPlainText(
                 tr("Game %1: %2")
                     .arg(gameNumber)
-                    .arg(gameResultNotation(result.outcome)));
+                    .arg(gameResultText(result.outcome)));
         }
         updateTournamentScore(m_tournamentRunner->summary());
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentFinished, this,
             [this](const TournamentSummary& summary) {
-        const QString message = tr("Tournament finished after %1 games.\nResult: %2 - %3 - %4")
+        const QString message = tr("Tournament finished after %1 games.\nResult: %2")
             .arg(summary.completedGames)
-            .arg(summary.whiteWins)
-            .arg(summary.draws)
-            .arg(summary.blackWins);
+            .arg(tournamentResultText(summary));
         if (ui && ui->labelTournamentStatus) {
             ui->labelTournamentStatus->setText(tr("Tournament finished"));
         }
@@ -416,11 +422,7 @@ void MainWindow::updateTournamentScore(const TournamentSummary& summary)
         return;
     }
 
-    ui->labelTournamentScore->setText(
-        tr(": %1 - %2 - %3")
-            .arg(summary.whiteWins)
-            .arg(summary.draws)
-            .arg(summary.blackWins));
+    ui->labelTournamentScore->setText(QStringLiteral(": ") + tournamentResultText(summary));
 }
 
 void MainWindow::updatePlayerNames(const MatchConfig& match)
