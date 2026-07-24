@@ -267,6 +267,7 @@ bool GameController::startEngineForPlayer(EngineSession& session,
     session.active = false;
     session.uciOk = false;
     session.readyOk = false;
+    session.searching = false;
     session.lastErrorLine.clear();
 
     const QString effectiveLogDir = m_logDir.isEmpty()
@@ -305,6 +306,7 @@ void GameController::stopEngines()
         m_whiteSession.active = false;
         m_whiteSession.uciOk = false;
         m_whiteSession.readyOk = false;
+        m_whiteSession.searching = false;
         m_whiteSession.lastErrorLine.clear();
         m_whiteSession.client->sendStop();
         m_whiteSession.client->sendQuit();
@@ -314,6 +316,7 @@ void GameController::stopEngines()
         m_blackSession.active = false;
         m_blackSession.uciOk = false;
         m_blackSession.readyOk = false;
+        m_blackSession.searching = false;
         m_blackSession.lastErrorLine.clear();
         m_blackSession.client->sendStop();
         m_blackSession.client->sendQuit();
@@ -461,7 +464,11 @@ void GameController::handleReadyOk(EngineSide side)
     }
     session.readyOk = true;
     session.client->sendNewGame();
-    startTurnIfReady();
+
+    const Color engineColor = side == EngineSide::White ? WHITE : BLACK;
+    if (m_position.get_side_to_move() == engineColor) {
+        startTurnIfReady();
+    }
 }
 
 void GameController::handleEngineError(EngineSide side, const QString& line)
@@ -487,6 +494,7 @@ void GameController::handleEngineExited(EngineSide side, int exitCode, QProcess:
     session.active = false;
     session.uciOk = false;
     session.readyOk = false;
+    session.searching = false;
 
     if (!m_active) {
         session.lastErrorLine.clear();
@@ -515,9 +523,18 @@ void GameController::handleEngineExited(EngineSide side, int exitCode, QProcess:
 
 void GameController::handleBestMove(EngineSide side, const QString& move)
 {
-    Q_UNUSED(side);
-
     if (!m_active) {
+        return;
+    }
+
+    EngineSession& session = sessionForSide(side);
+    if (!session.active || !session.searching) {
+        return;
+    }
+    session.searching = false;
+
+    const Color engineColor = side == EngineSide::White ? WHITE : BLACK;
+    if (m_position.get_side_to_move() != engineColor) {
         return;
     }
     if (finishGameIfTimeExpired()) {
@@ -541,7 +558,7 @@ void GameController::handleBestMove(EngineSide side, const QString& move)
 
 void GameController::sendPositionToEngine(EngineSession& session)
 {
-    if (!session.client || !session.readyOk) {
+    if (!session.client || !session.readyOk || session.searching) {
         return;
     }
     if (m_baseIsStartpos) {
@@ -554,7 +571,7 @@ void GameController::sendPositionToEngine(EngineSession& session)
 void GameController::sendGoForSide(EngineSide side)
 {
     EngineSession& session = sessionForSide(side);
-    if (!session.active || !session.readyOk || !session.client) {
+    if (!session.active || !session.readyOk || session.searching || !session.client) {
         return;
     }
     if ((side == EngineSide::White && m_position.get_side_to_move() != WHITE)
@@ -562,6 +579,7 @@ void GameController::sendGoForSide(EngineSide side)
         return;
     }
 
+    session.searching = true;
     if (m_timeControlEnabled) {
         const int wtime = static_cast<int>(qMax<qint64>(0, m_whiteTimeMs));
         const int btime = static_cast<int>(qMax<qint64>(0, m_blackTimeMs));

@@ -111,6 +111,7 @@ private slots:
     void controllerStopsOnTimeout();
     void controllerRejectsMoveAfterTimeout();
     void controllerStopsWhenEngineExits();
+    void controllerIgnoresDuplicateEngineBestMove();
 };
 
 void TestMoveExecution::doMoveAppliesLegalGeneratedMove()
@@ -351,6 +352,33 @@ void TestMoveExecution::controllerStopsWhenEngineExits()
     QVERIFY(message[1].toString().contains(QStringLiteral("White engine exited")));
     QVERIFY(message[1].toString().contains(QStringLiteral("code 17")));
     QVERIFY(message[1].toString().contains(QStringLiteral("simulated engine failure")));
+}
+
+void TestMoveExecution::controllerIgnoresDuplicateEngineBestMove()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)), kStartFen));
+
+    controller.m_config.player1.type = PlayerType::Engine;
+    controller.m_whiteSession.active = true;
+    controller.m_whiteSession.readyOk = true;
+    controller.m_whiteSession.searching = true;
+
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    controller.handleBestMove(EngineSide::White, QStringLiteral("e2e4"));
+
+    const QString positionAfterFirstMove =
+        QString::fromStdString(controller.currentPosition().get_FEN());
+    QCOMPARE(positionAfterFirstMove,
+             QStringLiteral("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"));
+    QCOMPARE(controller.m_whiteSession.searching, false);
+
+    controller.handleBestMove(EngineSide::White, QStringLiteral("e2e4"));
+
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             positionAfterFirstMove);
+    QCOMPARE(errorSpy.count(), 0);
+    QCOMPARE(controller.isActive(), true);
 }
 
 int main(int argc, char **argv)

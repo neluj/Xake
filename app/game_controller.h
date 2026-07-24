@@ -25,6 +25,7 @@ struct EngineSession {
     bool active = false;
     bool uciOk = false;
     bool readyOk = false;
+    bool searching = false;
     QString lastErrorLine;
 };
 
