@@ -107,21 +107,14 @@ void BoardWidget::paintEvent(QPaintEvent *event)
 
     QPainter painter(this);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    // Fit the image into the largest square within the widget.
-    const int side = qMin(width(), height());
-    if (side <= 0) {
+    QRect boardRect;
+    int cellSize = 0;
+    int labelMargin = 0;
+    if (!boardGeometry(boardRect, cellSize, labelMargin)) {
         return;
     }
-
-    const int cellSize = side / 8;
-    if (cellSize <= 0) {
-        return;
-    }
-    const int boardSize = cellSize * 8;
-    const int x = (width() - boardSize) / 2;
-    const int y = (height() - boardSize) / 2;
-    QRect boardRect(x, y, boardSize, boardSize);
 
     const QColor lightSquare(240, 217, 181);
     const QColor darkSquare(181, 136, 99);
@@ -143,38 +136,60 @@ void BoardWidget::paintEvent(QPaintEvent *event)
         painter.fillRect(QRect(px, py, cellSize, cellSize), QColor(80, 120, 200, 120));
     }
 
-    if (m_pieceset.isNull()) {
-        return;
+    if (!m_pieceset.isNull()) {
+        const double tileW = static_cast<double>(m_pieceset.width()) / 6.0;
+        const double tileH = static_cast<double>(m_pieceset.height()) / 2.0;
+        if (tileW > 0.0 && tileH > 0.0) {
+            // Fit the pieces into the board square grid.
+            const double cell = static_cast<double>(cellSize);
+
+            for (int sq = 0; sq < 64; ++sq) {
+                const Piece piece = pieceAt(m_position, sq);
+                if (piece == NO_PIECE) {
+                    continue;
+                }
+
+                const int col = pieceSpriteColumn(piece);
+                if (col < 0) {
+                    continue;
+                }
+                const int row = (piece_color(piece) == WHITE) ? 0 : 1;
+                const QRectF source(col * tileW, row * tileH, tileW, tileH);
+
+                const int file = sq % 8;
+                const int rank = sq / 8;
+                const double px = boardRect.left() + file * cell;
+                const double py = boardRect.top() + (7 - rank) * cell;
+                const QRectF target(px, py, cell, cell);
+                painter.drawPixmap(target, m_pieceset, source);
+            }
+        }
     }
 
-    const double tileW = static_cast<double>(m_pieceset.width()) / 6.0;
-    const double tileH = static_cast<double>(m_pieceset.height()) / 2.0;
-    if (tileW <= 0.0 || tileH <= 0.0) {
-        return;
+    QFont coordinateFont = painter.font();
+    coordinateFont.setBold(true);
+    coordinateFont.setPixelSize(qBound(8, cellSize / 5, 16));
+    painter.setFont(coordinateFont);
+    painter.setPen(palette().color(QPalette::WindowText));
+
+    for (int file = 0; file < 8; ++file) {
+        const QRect labelRect(boardRect.left() + file * cellSize,
+                              boardRect.bottom() + 1,
+                              cellSize,
+                              labelMargin);
+        painter.drawText(labelRect,
+                         Qt::AlignHCenter | Qt::AlignVCenter,
+                         QString(QChar('a' + file)));
     }
 
-    // Fit the pieces into the board square grid.
-    const double cell = static_cast<double>(cellSize);
-
-    for (int sq = 0; sq < 64; ++sq) {
-        const Piece piece = pieceAt(m_position, sq);
-        if (piece == NO_PIECE) {
-            continue;
-        }
-
-        const int col = pieceSpriteColumn(piece);
-        if (col < 0) {
-            continue;
-        }
-        const int row = (piece_color(piece) == WHITE) ? 0 : 1;
-        const QRectF source(col * tileW, row * tileH, tileW, tileH);
-
-        const int file = sq % 8;
-        const int rank = sq / 8;
-        const double px = boardRect.left() + file * cell;
-        const double py = boardRect.top() + (7 - rank) * cell;
-        const QRectF target(px, py, cell, cell);
-        painter.drawPixmap(target, m_pieceset, source);
+    for (int rank = 0; rank < 8; ++rank) {
+        const QRect labelRect(boardRect.left() - labelMargin,
+                              boardRect.top() + (7 - rank) * cellSize,
+                              labelMargin,
+                              cellSize);
+        painter.drawText(labelRect,
+                         Qt::AlignHCenter | Qt::AlignVCenter,
+                         QString::number(rank + 1));
     }
 }
 
@@ -246,20 +261,36 @@ void BoardWidget::mousePressEvent(QMouseEvent *event)
     update();
 }
 
-bool BoardWidget::squareFromPoint(const QPoint& point, int& outSq) const
+bool BoardWidget::boardGeometry(QRect& boardRect, int& cellSize, int& labelMargin) const
 {
     const int side = qMin(width(), height());
     if (side <= 0) {
         return false;
     }
-    const int cellSize = side / 8;
+
+    labelMargin = qBound(12, side / 24, 24);
+    const int availableSide = side - 2 * labelMargin;
+    cellSize = availableSide / 8;
     if (cellSize <= 0) {
         return false;
     }
+
     const int boardSize = cellSize * 8;
-    const int x = (width() - boardSize) / 2;
-    const int y = (height() - boardSize) / 2;
-    const QRect boardRect(x, y, boardSize, boardSize);
+    const int contentSize = boardSize + 2 * labelMargin;
+    const int x = (width() - contentSize) / 2 + labelMargin;
+    const int y = (height() - contentSize) / 2 + labelMargin;
+    boardRect = QRect(x, y, boardSize, boardSize);
+    return true;
+}
+
+bool BoardWidget::squareFromPoint(const QPoint& point, int& outSq) const
+{
+    QRect boardRect;
+    int cellSize = 0;
+    int labelMargin = 0;
+    if (!boardGeometry(boardRect, cellSize, labelMargin)) {
+        return false;
+    }
     if (!boardRect.contains(point)) {
         return false;
     }

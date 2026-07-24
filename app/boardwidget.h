@@ -26,6 +26,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
 
 private:
+    bool boardGeometry(QRect& boardRect, int& cellSize, int& labelMargin) const;
     bool squareFromPoint(const QPoint& point, int& outSq) const;
     Xake::PieceType promptPromotion(Xake::Color color, const QPoint& globalPos) const;
 
