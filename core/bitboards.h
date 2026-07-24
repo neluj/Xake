@@ -3,7 +3,7 @@
 #include "types.h"
 #include <iostream>
 
-namespace ChessGame{
+namespace Xake{
 
 
 using Bitboard = uint64_t;
@@ -87,6 +87,6 @@ namespace Bitboards {
     }
 
 };
-} // namespace ChessGame
+} // namespace Xake
 
 

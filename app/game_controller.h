@@ -41,16 +41,16 @@ public:
                     const QString& logDir = QString(),
                     const QString& logTag = QString());
     void stopMatch();
-    bool applyHumanMove(ChessGame::Move move);
+    bool applyHumanMove(Xake::Move move);
 
     bool isActive() const;
     MatchConfig matchConfig() const;
-    ChessGame::Position currentPosition() const;
+    Xake::Position currentPosition() const;
     bool timeControlEnabled() const;
-    qint64 remainingTimeMs(ChessGame::Color side) const;
+    qint64 remainingTimeMs(Xake::Color side) const;
 
 signals:
-    void positionChanged(const ChessGame::Position& position);
+    void positionChanged(const Xake::Position& position);
     void matchStarted(const MatchConfig& config);
     void matchStopped();
     void errorOccurred(const QString& title, const QString& message);
@@ -59,22 +59,22 @@ private slots:
     void handleTurnTimeout();
 
 private:
-    ChessGame::Move moveFromUci(const QString& move) const;
-    ChessGame::Move resolveMoveCandidate(ChessGame::Move move) const;
-    QString uciFromMove(ChessGame::Move move) const;
-    bool applyMove(ChessGame::Move move, ChessGame::Move* appliedMove = nullptr);
-    void afterMoveApplied(ChessGame::Move move);
+    Xake::Move moveFromUci(const QString& move) const;
+    Xake::Move resolveMoveCandidate(Xake::Move move) const;
+    QString uciFromMove(Xake::Move move) const;
+    bool applyMove(Xake::Move move, Xake::Move* appliedMove = nullptr);
+    void afterMoveApplied(Xake::Move move);
     bool finishGameIfNoLegalMoves();
     bool finishGameIfDraw();
     bool finishGameAsDraw(const QString& message);
     bool finishGameIfTimeExpired();
-    bool finishGameOnTime(ChessGame::Color flaggedSide);
+    bool finishGameOnTime(Xake::Color flaggedSide);
     bool startEngineForPlayer(EngineSession& session,
                               const PlayerConfig& player,
                               EngineSide side);
     void stopEngines();
-    void startSideTimer(ChessGame::Color side);
-    void stopSideTimer(ChessGame::Color side);
+    void startSideTimer(Xake::Color side);
+    void stopSideTimer(Xake::Color side);
     void startTurnIfReady();
     void handleEngineError(EngineSide side, const QString& line);
     void handleEngineExited(EngineSide side, int exitCode, QProcess::ExitStatus status);
@@ -87,19 +87,19 @@ private:
 
     bool m_active = false;
     MatchConfig m_config;
-    ChessGame::Position m_position;
+    Xake::Position m_position;
     EngineSession m_whiteSession;
     EngineSession m_blackSession;
     bool m_baseIsStartpos = false;
     std::string m_baseFen;
     QStringList m_uciMoves;
-    QVector<ChessGame::Move> m_moveHistory;
+    QVector<Xake::Move> m_moveHistory;
     bool m_timeControlEnabled = false;
     qint64 m_whiteTimeMs = 0;
     qint64 m_blackTimeMs = 0;
     qint64 m_incrementMs = 0;
     bool m_timerRunning = false;
-    ChessGame::Color m_timedSide = ChessGame::WHITE;
+    Xake::Color m_timedSide = Xake::WHITE;
     QElapsedTimer m_turnTimer;
     QTimer *m_flagTimer = nullptr;
     QString m_logDir;

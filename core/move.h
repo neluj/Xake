@@ -2,7 +2,7 @@
 
 #include "types.h"
 #include <cstdint>
-namespace ChessGame{
+namespace Xake{
 
 /*Move:
 .... 0000 0000 0000 0000 0000 0000 0000 0011 1111 -> From
@@ -139,6 +139,6 @@ inline std::string algebraic_move(Move move) {
     return algebraic_move;
 }
 
-} // namespace ChessGame
+} // namespace Xake
 
 

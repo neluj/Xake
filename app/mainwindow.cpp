@@ -14,7 +14,7 @@
 
 #include <string>
 
-using namespace ChessGame;
+using namespace Xake;
 
 namespace {
 
@@ -105,7 +105,7 @@ MainWindow::MainWindow(QWidget *parent)
         });
     }
 
-    connect(m_gameController, &GameController::positionChanged, this, [this](const ChessGame::Position& position) {
+    connect(m_gameController, &GameController::positionChanged, this, [this](const Xake::Position& position) {
         if (ui && ui->board) {
             ui->board->setPosition(position);
         }
@@ -137,7 +137,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     if (ui && ui->board) {
-        connect(ui->board, &BoardWidget::moveRequested, this, [this](ChessGame::Move move) {
+        connect(ui->board, &BoardWidget::moveRequested, this, [this](Xake::Move move) {
             m_gameController->applyHumanMove(move);
         });
     }
@@ -207,7 +207,7 @@ void MainWindow::updateClockUi()
     ui->blackTimeLcd->display(formatClockMs(blackMs));
 }
 
-void MainWindow::updateSideToMoveLabel(const ChessGame::Position& position)
+void MainWindow::updateSideToMoveLabel(const Xake::Position& position)
 {
     if (!ui || !ui->labelSideToMove) {
         return;

@@ -2,7 +2,7 @@
 
 #include "movegen.h"
 
-namespace ChessGame {
+namespace Xake {
 
 NodesSize perft(Position& position, DepthSize depth)
 {
@@ -61,4 +61,4 @@ NodesSize perft_root(Position& position,
     return totalNodes;
 }
 
-} // namespace ChessGame
+} // namespace Xake

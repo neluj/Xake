@@ -2,7 +2,7 @@
 #include "position.h"
 #include "attacks.h"
 
-namespace ChessGame{
+namespace Xake{
 
 namespace MoveGen{
 

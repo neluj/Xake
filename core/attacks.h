@@ -2,7 +2,7 @@
 
 #include "bitboards.h"
 
-namespace ChessGame{
+namespace Xake{
 
 
 namespace Attacks {
@@ -32,4 +32,4 @@ namespace Attacks {
     Bitboard sliding_diagonal_attacks(Square64 sq64, Bitboard occupied);
 };  
 
-} // namespace ChessGame
+} // namespace Xake

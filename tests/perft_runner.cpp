@@ -14,7 +14,7 @@ namespace {
 
 constexpr char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-using namespace ChessGame;
+using namespace Xake;
 
 struct Options {
     bool interactive = true;
@@ -333,7 +333,7 @@ int runInteractive()
             return 0;
         }
         if (line == "uci") {
-            std::cout << "id name ChessGame Perft Runner\n";
+            std::cout << "id name Xake Perft Runner\n";
             std::cout << "id author Julen\n";
             std::cout << "uciok\n";
             std::cout.flush();

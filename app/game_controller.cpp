@@ -11,7 +11,7 @@
 #include <QTimer>
 #include <cstdlib>
 
-using namespace ChessGame;
+using namespace Xake;
 
 namespace {
 
@@ -233,7 +233,7 @@ MatchConfig GameController::matchConfig() const
     return m_config;
 }
 
-ChessGame::Position GameController::currentPosition() const
+Xake::Position GameController::currentPosition() const
 {
     return m_position;
 }
@@ -243,7 +243,7 @@ bool GameController::timeControlEnabled() const
     return m_timeControlEnabled;
 }
 
-qint64 GameController::remainingTimeMs(ChessGame::Color side) const
+qint64 GameController::remainingTimeMs(Xake::Color side) const
 {
     qint64 remaining = (side == WHITE) ? m_whiteTimeMs : m_blackTimeMs;
     if (m_timeControlEnabled && m_timerRunning && m_timedSide == side) {

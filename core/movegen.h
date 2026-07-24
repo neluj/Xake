@@ -3,7 +3,7 @@
 #include <vector>
 #include "move.h"
 
-namespace ChessGame{
+namespace Xake{
 
 class Position;
 
@@ -24,5 +24,5 @@ void generate_pseudo_moves(const Position &pos, MoveList &moveList);
 void generate_pseudo_captures(Position &pos, MoveList &moveList);
 
 
-} // namespace ChessGame
+} // namespace Xake
 }

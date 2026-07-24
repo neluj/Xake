@@ -2,7 +2,7 @@
 
 #include "position.h"
 
-using namespace ChessGame;
+using namespace Xake;
 
 void normalizeMatchConfig(MatchConfig &config)
 {

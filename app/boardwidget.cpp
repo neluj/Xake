@@ -9,7 +9,7 @@
 #include <QSizePolicy>
 #include <QSvgRenderer>
 
-using namespace ChessGame;
+using namespace Xake;
 
 namespace {
 
@@ -85,7 +85,7 @@ BoardWidget::BoardWidget(QWidget *parent)
     setFromFenString("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
 
-void BoardWidget::setPosition(const ChessGame::Position& position)
+void BoardWidget::setPosition(const Xake::Position& position)
 {
     m_position = position;
     m_selectedSq = -1;
@@ -274,7 +274,7 @@ bool BoardWidget::squareFromPoint(const QPoint& point, int& outSq) const
     return true;
 }
 
-ChessGame::PieceType BoardWidget::promptPromotion(ChessGame::Color color, const QPoint& globalPos) const
+Xake::PieceType BoardWidget::promptPromotion(Xake::Color color, const QPoint& globalPos) const
 {
     Q_UNUSED(color);
 

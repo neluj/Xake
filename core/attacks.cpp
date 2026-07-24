@@ -2,7 +2,7 @@
 
 #include <mutex>
 
-namespace ChessGame{
+namespace Xake{
 
 using namespace Bitboards;
 namespace Attacks {

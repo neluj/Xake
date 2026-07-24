@@ -1,4 +1,4 @@
-/*General type definitios for ChessGame*/
+/*General type definitios for Xake*/
 #pragma once
 
 #include <cstdint>
@@ -6,7 +6,7 @@
 #include <string_view>
 #include <chrono>
 
-namespace ChessGame{
+namespace Xake{
 
 using DepthSize = uint16_t;
 using NodesSize = uint64_t;
@@ -181,4 +181,4 @@ constexpr CastlingRight   operator&(CastlingRight cr1, CastlingRight cr2){ retur
 constexpr CastlingRight   operator&(CastlingRight cr1, int cr2){ return CastlingRight(int(cr1) & cr2); }
 inline CastlingRight&   operator&=(CastlingRight& cr1, int cr2){ return cr1 = CastlingRight(cr1 & cr2); }
 
-} // namespace ChessGame
+} // namespace Xake

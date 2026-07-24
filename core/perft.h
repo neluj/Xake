@@ -6,7 +6,7 @@
 
 #include <vector>
 
-namespace ChessGame {
+namespace Xake {
 
 struct PerftDivideEntry {
     Move move = NOMOVE;
@@ -18,4 +18,4 @@ NodesSize perft_root(Position& position,
                      DepthSize depth,
                      std::vector<PerftDivideEntry>* divide = nullptr);
 
-} // namespace ChessGame
+} // namespace Xake

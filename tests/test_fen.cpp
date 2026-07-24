@@ -3,7 +3,7 @@
 #include "position.h"
 #include "types.h"
 
-using namespace ChessGame;
+using namespace Xake;
 
 class TestFen : public QObject
 {

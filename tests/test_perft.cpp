@@ -2,7 +2,7 @@
 
 #include "perft.h"
 
-using namespace ChessGame;
+using namespace Xake;
 
 namespace {
 

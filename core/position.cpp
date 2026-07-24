@@ -5,7 +5,7 @@
 #include <limits>
 #include <random>
 
-namespace ChessGame{
+namespace Xake{
 
 namespace {
 
@@ -711,4 +711,4 @@ void Position::add_piece(Square64 square, Piece piece){
 
 }
 
-} // namespace ChessGame
+} // namespace Xake

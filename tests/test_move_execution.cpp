@@ -7,7 +7,7 @@
 #include "movegen.h"
 #include "position.h"
 
-using namespace ChessGame;
+using namespace Xake;
 
 namespace {
 

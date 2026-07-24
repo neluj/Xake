@@ -5,7 +5,7 @@
 #include <sstream>
 
 
-namespace ChessGame{
+namespace Xake{
 
     struct HistoryInfo{
         Move nextMove;
@@ -86,4 +86,4 @@ inline Bitboard Position::get_occupied_bitboard(Color color) const{
     return occupiedBitboards[color];
 }
 
-} // namespace ChessGame
+} // namespace Xake
