@@ -4,6 +4,7 @@
 #include "single_game_dialog.h"
 #include "session_record.h"
 #include "tournament_dialog.h"
+#include "tournament_runner.h"
 #include "uci_client.h"
 
 #include <QAction>
@@ -69,6 +70,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
     , m_uciClient(new UciClient(this))
     , m_gameController(new GameController(this))
+    , m_tournamentRunner(new TournamentRunner(m_gameController, this))
     , m_clockUiTimer(new QTimer(this))
 {
     // Build the widget tree from the .ui description.
@@ -133,7 +135,53 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_gameController, &GameController::errorOccurred, this,
             [this](const QString& title, const QString& message) {
+        const bool isNormalGameResult = title == tr("Checkmate")
+            || title == tr("Draw")
+            || title == tr("Time");
+        if (m_tournamentRunner && m_tournamentRunner->isActive() && isNormalGameResult) {
+            if (ui && ui->statusbar) {
+                ui->statusbar->showMessage(message);
+            }
+            return;
+        }
         QMessageBox::warning(this, title, message);
+    });
+
+    connect(m_tournamentRunner, &TournamentRunner::tournamentGameStarted, this,
+            [this](int gameNumber, int totalGames, const MatchConfig&) {
+        if (ui && ui->statusbar) {
+            ui->statusbar->showMessage(
+                tr("Tournament game %1 of %2.").arg(gameNumber).arg(totalGames));
+        }
+    });
+
+    connect(m_tournamentRunner, &TournamentRunner::tournamentFinished, this,
+            [this](const TournamentSummary& summary) {
+        const TournamentConfig& config = m_state.lastTournament;
+        const QString player1 = config.match.player1.name.isEmpty()
+            ? tr("Player 1")
+            : config.match.player1.name;
+        const QString player2 = config.match.player2.name.isEmpty()
+            ? tr("Player 2")
+            : config.match.player2.name;
+        const QString message = tr("Tournament finished after %1 games.\n%2: %3 wins\n%4: %5 wins\nDraws: %6")
+            .arg(summary.completedGames)
+            .arg(player1)
+            .arg(summary.player1Wins)
+            .arg(player2)
+            .arg(summary.player2Wins)
+            .arg(summary.draws);
+        if (ui && ui->statusbar) {
+            ui->statusbar->showMessage(message);
+        }
+        QMessageBox::information(this, tr("Tournament finished"), message);
+    });
+
+    connect(m_tournamentRunner, &TournamentRunner::tournamentAborted, this,
+            [this](const QString& title, const QString& message) {
+        if (ui && ui->statusbar) {
+            ui->statusbar->showMessage(tr("%1: %2").arg(title, message));
+        }
     });
 
     if (ui && ui->board) {
@@ -155,6 +203,19 @@ MainWindow::~MainWindow()
 
 bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* tournament)
 {
+    if (m_tournamentRunner && m_tournamentRunner->isActive()) {
+        QMessageBox::warning(this,
+                             tr("Tournament in progress"),
+                             tr("Finish the current tournament before starting another game."));
+        return false;
+    }
+    if (m_gameController && m_gameController->isActive()) {
+        QMessageBox::warning(this,
+                             tr("Game in progress"),
+                             tr("Finish the current game before starting another one."));
+        return false;
+    }
+
     const std::string fen = resolveStartFen(config.game);
     const QString sessionTag = sessionTagNow();
     const QString sessionType = tournament ? QStringLiteral("tournament")
@@ -181,6 +242,10 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         if (!writeSessionRecord(record, recordPath, &errorDetail)) {
             warnSessionRecordFailure(this, errorDetail);
         }
+    }
+
+    if (tournament) {
+        return m_tournamentRunner->start(*tournament, fen, sessionDir, sessionTag);
     }
 
     return m_gameController->startMatch(config, fen, sessionDir, sessionTag);

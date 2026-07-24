@@ -28,6 +28,30 @@ struct EngineSession {
     QString lastErrorLine;
 };
 
+enum class GameOutcome {
+    WhiteWin,
+    BlackWin,
+    Draw
+};
+
+enum class GameTermination {
+    Checkmate,
+    Stalemate,
+    FiftyMoveRule,
+    ThreefoldRepetition,
+    InsufficientMaterial,
+    TimeForfeit,
+    MoveLimit
+};
+
+struct GameResult {
+    GameOutcome outcome = GameOutcome::Draw;
+    GameTermination termination = GameTermination::Stalemate;
+    QString message;
+};
+
+Q_DECLARE_METATYPE(GameResult)
+
 class GameController : public QObject
 {
     Q_OBJECT
@@ -39,7 +63,8 @@ public:
     bool startMatch(const MatchConfig& config,
                     const std::string& fen,
                     const QString& logDir = QString(),
-                    const QString& logTag = QString());
+                    const QString& logTag = QString(),
+                    int maxFullMoves = 0);
     void stopMatch();
     bool applyHumanMove(Xake::Move move);
 
@@ -53,6 +78,8 @@ signals:
     void positionChanged(const Xake::Position& position);
     void matchStarted(const MatchConfig& config);
     void matchStopped();
+    void gameFinished(const GameResult& result);
+    void gameAborted(const QString& title, const QString& message);
     void errorOccurred(const QString& title, const QString& message);
 
 private slots:
@@ -66,7 +93,12 @@ private:
     void afterMoveApplied(Xake::Move move);
     bool finishGameIfNoLegalMoves();
     bool finishGameIfDraw();
-    bool finishGameAsDraw(const QString& message);
+    bool finishGameIfMoveLimit();
+    bool finishGameAsDraw(GameTermination termination, const QString& message);
+    bool finishGame(GameOutcome outcome,
+                    GameTermination termination,
+                    const QString& title,
+                    const QString& message);
     bool finishGameIfTimeExpired();
     bool finishGameOnTime(Xake::Color flaggedSide);
     bool startEngineForPlayer(EngineSession& session,
@@ -104,4 +136,5 @@ private:
     QTimer *m_flagTimer = nullptr;
     QString m_logDir;
     QString m_logTag;
+    int m_maxFullMoves = 0;
 };

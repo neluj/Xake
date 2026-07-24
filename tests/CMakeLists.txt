@@ -39,6 +39,19 @@ target_link_libraries(move_execution_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME move_execution_tests COMMAND move_execution_tests)
 
+add_executable(tournament_runner_tests
+    test_tournament_runner.cpp
+    ${CMAKE_SOURCE_DIR}/app/game_controller.cpp
+    ${CMAKE_SOURCE_DIR}/app/match_settings_validation.cpp
+    ${CMAKE_SOURCE_DIR}/app/tournament_runner.cpp
+    ${CMAKE_SOURCE_DIR}/app/uci_client.cpp
+)
+
+target_include_directories(tournament_runner_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(tournament_runner_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME tournament_runner_tests COMMAND tournament_runner_tests)
+
 add_executable(perft_tests
     test_perft.cpp
 )

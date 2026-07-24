@@ -9,6 +9,7 @@
 #include <QTimer>
 
 class UciClient;
+class TournamentRunner;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -35,6 +36,7 @@ private:
     QString m_enginePath;
     AppState m_state;
     GameController *m_gameController;
+    TournamentRunner *m_tournamentRunner;
     QTimer *m_clockUiTimer = nullptr;
 };
 #endif // MAINWINDOW_H

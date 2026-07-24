@@ -120,7 +120,8 @@ GameController::GameController(QObject *parent)
 bool GameController::startMatch(const MatchConfig& config,
                                 const std::string& fen,
                                 const QString& logDir,
-                                const QString& logTag)
+                                const QString& logTag,
+                                int maxFullMoves)
 {
     stopEngines();
     m_uciMoves.clear();
@@ -159,6 +160,7 @@ bool GameController::startMatch(const MatchConfig& config,
     m_timerRunning = false;
     m_logDir = logDir;
     m_logTag = logTag;
+    m_maxFullMoves = qMax(0, maxFullMoves);
 
     if (m_config.player1.type == PlayerType::Engine) {
         if (!startEngineForPlayer(m_whiteSession, m_config.player1, EngineSide::White)) {
@@ -500,13 +502,13 @@ void GameController::handleEngineExited(EngineSide side, int exitCode, QProcess:
     const QString statusText = (status == QProcess::CrashExit)
         ? tr("crashed")
         : tr("exited");
-    emit errorOccurred(
-        tr("Engine error"),
-        tr("%1 engine %2 (code %3).%4")
-            .arg(sideName)
-            .arg(statusText)
-            .arg(exitCode)
-            .arg(detail));
+    const QString message = tr("%1 engine %2 (code %3).%4")
+        .arg(sideName)
+        .arg(statusText)
+        .arg(exitCode)
+        .arg(detail);
+    emit gameAborted(tr("Engine error"), message);
+    emit errorOccurred(tr("Engine error"), message);
     session.lastErrorLine.clear();
     stopMatch();
 }
@@ -528,7 +530,10 @@ void GameController::handleBestMove(EngineSide side, const QString& move)
     const Move parsed = moveFromUci(move);
     Move appliedMove = NOMOVE;
     if (!applyMove(parsed, &appliedMove)) {
-        emit errorOccurred(tr("Engine error"), tr("Invalid bestmove: %1").arg(move));
+        const QString message = tr("Invalid bestmove: %1").arg(move);
+        emit gameAborted(tr("Engine error"), message);
+        emit errorOccurred(tr("Engine error"), message);
+        stopMatch();
         return;
     }
     afterMoveApplied(appliedMove);
@@ -600,6 +605,9 @@ void GameController::afterMoveApplied(Move move)
     if (finishGameIfDraw()) {
         return;
     }
+    if (finishGameIfMoveLimit()) {
+        return;
+    }
 
     startTurnIfReady();
 }
@@ -626,33 +634,56 @@ bool GameController::finishGameOnTime(Color flaggedSide)
     }
 
     const Color winner = ~flaggedSide;
-    emit errorOccurred(tr("Time"),
-                       tr("%1 wins on time.")
-                           .arg(winner == WHITE ? tr("White") : tr("Black")));
-    stopMatch();
-    return true;
+    return finishGame(winner == WHITE ? GameOutcome::WhiteWin : GameOutcome::BlackWin,
+                      GameTermination::TimeForfeit,
+                      tr("Time"),
+                      tr("%1 wins on time.")
+                          .arg(winner == WHITE ? tr("White") : tr("Black")));
 }
 
 bool GameController::finishGameIfDraw()
 {
     if (m_position.get_fifty_moves_counter() >= 100) {
-        return finishGameAsDraw(tr("Draw by fifty-move rule."));
+        return finishGameAsDraw(GameTermination::FiftyMoveRule,
+                                tr("Draw by fifty-move rule."));
     }
 
     if (m_position.has_threefold_repetition()) {
-        return finishGameAsDraw(tr("Draw by repetition."));
+        return finishGameAsDraw(GameTermination::ThreefoldRepetition,
+                                tr("Draw by repetition."));
     }
 
     if (m_position.has_insufficient_material()) {
-        return finishGameAsDraw(tr("Draw by insufficient material."));
+        return finishGameAsDraw(GameTermination::InsufficientMaterial,
+                                tr("Draw by insufficient material."));
     }
 
     return false;
 }
 
-bool GameController::finishGameAsDraw(const QString& message)
+bool GameController::finishGameIfMoveLimit()
 {
-    emit errorOccurred(tr("Draw"), message);
+    if (m_maxFullMoves <= 0
+        || m_moveHistory.size() < static_cast<qsizetype>(m_maxFullMoves) * 2) {
+        return false;
+    }
+
+    return finishGameAsDraw(GameTermination::MoveLimit,
+                            tr("Draw by tournament move limit."));
+}
+
+bool GameController::finishGameAsDraw(GameTermination termination, const QString& message)
+{
+    return finishGame(GameOutcome::Draw, termination, tr("Draw"), message);
+}
+
+bool GameController::finishGame(GameOutcome outcome,
+                                GameTermination termination,
+                                const QString& title,
+                                const QString& message)
+{
+    emit gameFinished(GameResult{outcome, termination, message});
+    emit errorOccurred(title, message);
     stopMatch();
     return true;
 }
@@ -672,6 +703,9 @@ bool GameController::finishGameIfNoLegalMoves()
 
     const Bitboard kingBitboard = m_position.get_pieceTypes_bitboard(sideToMove, KING);
     if (!kingBitboard) {
+        const QString message = tr("Position has no king for the side to move.");
+        emit gameAborted(tr("Invalid position"), message);
+        emit errorOccurred(tr("Invalid position"), message);
         stopMatch();
         return true;
     }
@@ -680,15 +714,14 @@ bool GameController::finishGameIfNoLegalMoves()
     const bool inCheck = m_position.square_is_attacked_bySide(kingSquare, ~sideToMove);
     if (inCheck) {
         const Color winner = ~sideToMove;
-        emit errorOccurred(tr("Checkmate"),
-                           tr("%1 wins by checkmate.")
-                               .arg(winner == WHITE ? tr("White") : tr("Black")));
-    } else {
-        emit errorOccurred(tr("Draw"), tr("Stalemate."));
+        return finishGame(winner == WHITE ? GameOutcome::WhiteWin : GameOutcome::BlackWin,
+                          GameTermination::Checkmate,
+                          tr("Checkmate"),
+                          tr("%1 wins by checkmate.")
+                              .arg(winner == WHITE ? tr("White") : tr("Black")));
     }
 
-    stopMatch();
-    return true;
+    return finishGameAsDraw(GameTermination::Stalemate, tr("Stalemate."));
 }
 
 void GameController::startSideTimer(Color side)
