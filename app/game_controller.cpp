@@ -6,6 +6,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFileInfo>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -95,6 +96,14 @@ GameController::GameController(QObject *parent)
             [this](int exitCode, QProcess::ExitStatus status) {
         handleEngineExited(EngineSide::White, exitCode, status);
     });
+    connect(m_whiteSession.client, &UciClient::engineOutput, this,
+            [this](const QString& line) {
+        emit engineOutputReceived(EngineSide::White, line);
+    });
+    connect(m_whiteSession.client, &UciClient::communication, this,
+            [this](const QString& prefix, const QString& line) {
+        handleEngineCommunication(EngineSide::White, prefix, line);
+    });
 
     connect(m_blackSession.client, &UciClient::uciOk, this, [this]() {
         handleUciOk(EngineSide::Black);
@@ -115,6 +124,23 @@ GameController::GameController(QObject *parent)
             [this](int exitCode, QProcess::ExitStatus status) {
         handleEngineExited(EngineSide::Black, exitCode, status);
     });
+    connect(m_blackSession.client, &UciClient::engineOutput, this,
+            [this](const QString& line) {
+        emit engineOutputReceived(EngineSide::Black, line);
+    });
+    connect(m_blackSession.client, &UciClient::communication, this,
+            [this](const QString& prefix, const QString& line) {
+        handleEngineCommunication(EngineSide::Black, prefix, line);
+    });
+}
+
+GameController::~GameController()
+{
+    stopEngines();
+    if (m_communicationLogFile.isOpen()) {
+        m_communicationLogFile.flush();
+        m_communicationLogFile.close();
+    }
 }
 
 bool GameController::startMatch(const MatchConfig& config,
@@ -161,16 +187,17 @@ bool GameController::startMatch(const MatchConfig& config,
     m_logDir = logDir;
     m_logTag = logTag;
     m_maxFullMoves = qMax(0, maxFullMoves);
+    prepareCommunicationLog();
 
     if (m_config.player1.type == PlayerType::Engine) {
-        if (!startEngineForPlayer(m_whiteSession, m_config.player1, EngineSide::White)) {
+        if (!startEngineForPlayer(m_whiteSession, m_config.player1)) {
             stopEngines();
             m_active = false;
             return false;
         }
     }
     if (m_config.player2.type == PlayerType::Engine) {
-        if (!startEngineForPlayer(m_blackSession, m_config.player2, EngineSide::Black)) {
+        if (!startEngineForPlayer(m_blackSession, m_config.player2)) {
             stopEngines();
             m_active = false;
             return false;
@@ -245,6 +272,16 @@ QStringList GameController::moveHistoryUci() const
     return m_uciMoves;
 }
 
+QStringList GameController::communicationHistory() const
+{
+    return m_communicationHistory;
+}
+
+QString GameController::communicationLogFilePath() const
+{
+    return m_communicationLogFile.fileName();
+}
+
 bool GameController::timeControlEnabled() const
 {
     return m_timeControlEnabled;
@@ -261,8 +298,7 @@ qint64 GameController::remainingTimeMs(Xake::Color side) const
 }
 
 bool GameController::startEngineForPlayer(EngineSession& session,
-                                          const PlayerConfig& player,
-                                          EngineSide side)
+                                          const PlayerConfig& player)
 {
     if (!session.client) {
         emit errorOccurred(tr("Engine error"), tr("Engine client not available."));
@@ -275,18 +311,7 @@ bool GameController::startEngineForPlayer(EngineSession& session,
     session.searching = false;
     session.lastErrorLine.clear();
 
-    const QString effectiveLogDir = m_logDir.isEmpty()
-        ? QDir::current().filePath("logs")
-        : m_logDir;
-    QDir().mkpath(effectiveLogDir);
-    const QString effectiveTag = m_logTag.isEmpty()
-        ? QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")
-        : m_logTag;
-    const QString sideName = (side == EngineSide::White) ? QStringLiteral("white")
-                                                         : QStringLiteral("black");
-    const QString logFile = QDir(effectiveLogDir).filePath(
-        QString("uci_%1_%2.log").arg(sideName, effectiveTag));
-    session.client->setLogFilePath(logFile);
+    session.client->disableLogging();
 
     if (session.client->isRunning()) {
         session.client->sendQuit();
@@ -445,6 +470,121 @@ bool GameController::applyMove(Move move, Move* appliedMove)
     return true;
 }
 
+void GameController::prepareCommunicationLog()
+{
+    const bool hasEngine = m_config.player1.type == PlayerType::Engine
+        || m_config.player2.type == PlayerType::Engine;
+    const bool shouldLog = hasEngine || !m_logDir.trimmed().isEmpty();
+
+    if (!shouldLog) {
+        if (m_communicationLogFile.isOpen()) {
+            m_communicationLogFile.close();
+        }
+        if (!m_communicationLogFile.fileName().isEmpty()) {
+            m_communicationLogFile.setFileName(QString());
+            m_communicationHistory.clear();
+            emit communicationHistoryReset();
+        }
+        return;
+    }
+
+    const QString effectiveLogDir = m_logDir.isEmpty()
+        ? QDir::current().filePath(QStringLiteral("logs"))
+        : m_logDir;
+    const QString logPath = QDir(effectiveLogDir)
+        .filePath(QStringLiteral("uci_communication.log"));
+    if (m_communicationLogFile.fileName() != logPath) {
+        if (m_communicationLogFile.isOpen()) {
+            m_communicationLogFile.close();
+        }
+        m_communicationLogFile.setFileName(logPath);
+        m_communicationHistory.clear();
+        m_communicationLogErrorReported = false;
+        emit communicationHistoryReset();
+    }
+
+    if (!QDir().mkpath(effectiveLogDir)) {
+        if (!m_communicationLogErrorReported) {
+            m_communicationLogErrorReported = true;
+            emit communicationLogError(
+                tr("Could not create the engine communication log directory: %1")
+                    .arg(effectiveLogDir));
+        }
+        return;
+    }
+
+    if (!m_communicationLogFile.isOpen()
+        && !m_communicationLogFile.open(QIODevice::WriteOnly
+                                        | QIODevice::Append
+                                        | QIODevice::Text)) {
+        if (!m_communicationLogErrorReported) {
+            m_communicationLogErrorReported = true;
+            emit communicationLogError(
+                tr("Could not open the engine communication log: %1")
+                    .arg(m_communicationLogFile.errorString()));
+        }
+        return;
+    }
+
+    const QString tag = m_logTag.isEmpty()
+        ? QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss"))
+        : m_logTag;
+    writeCommunicationLog(QStringLiteral("Session"),
+                          QStringLiteral("##"),
+                          QStringLiteral("match %1 started").arg(tag));
+}
+
+void GameController::handleEngineCommunication(EngineSide side,
+                                               const QString& prefix,
+                                               const QString& line)
+{
+    const QString source = QStringLiteral("%1: %2")
+        .arg(engineSideName(side), engineDisplayName(side));
+    writeCommunicationLog(source, prefix, line);
+}
+
+void GameController::writeCommunicationLog(const QString& source,
+                                           const QString& prefix,
+                                           const QString& line)
+{
+    if (!m_communicationLogFile.isOpen()) {
+        return;
+    }
+
+    const QString timestamp = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
+    const QString formatted = QStringLiteral("%1 [%2] %3 %4")
+        .arg(timestamp, source, prefix, line.trimmed());
+    const QByteArray encoded = formatted.toUtf8() + '\n';
+    const qint64 written = m_communicationLogFile.write(encoded);
+    const bool flushed = m_communicationLogFile.flush();
+    if (written != encoded.size() || !flushed) {
+        if (!m_communicationLogErrorReported) {
+            m_communicationLogErrorReported = true;
+            emit communicationLogError(
+                tr("Could not write the engine communication log: %1")
+                    .arg(m_communicationLogFile.errorString()));
+        }
+        return;
+    }
+
+    m_communicationHistory.append(formatted);
+    emit communicationLogged(formatted);
+}
+
+QString GameController::engineDisplayName(EngineSide side) const
+{
+    const PlayerConfig& player = side == EngineSide::White
+        ? m_config.player1
+        : m_config.player2;
+    const QString configuredName = player.name.trimmed();
+    if (!configuredName.isEmpty()) {
+        return configuredName;
+    }
+
+    const QString fileName = QFileInfo(player.enginePath).fileName();
+    return fileName.isEmpty() ? tr("Unnamed engine") : fileName;
+}
+
 void GameController::handleUciOk(EngineSide side)
 {
     EngineSession& session = sessionForSide(side);
@@ -585,6 +725,7 @@ void GameController::sendGoForSide(EngineSide side)
     }
 
     session.searching = true;
+    emit engineSearchStarted(side);
     if (m_timeControlEnabled) {
         const int wtime = static_cast<int>(qMax<qint64>(0, m_whiteTimeMs));
         const int btime = static_cast<int>(qMax<qint64>(0, m_blackTimeMs));

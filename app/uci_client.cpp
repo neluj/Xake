@@ -299,12 +299,15 @@ void UciClient::handleOutputLine(const QString& line)
 
 void UciClient::logLine(const QString& prefix, const QString& line)
 {
+    const QString trimmedLine = line.trimmed();
+    emit communication(prefix, trimmedLine);
+
     if (!m_loggingEnabled || !m_logFile || !m_logFile->isOpen()) {
         return;
     }
 
     QTextStream stream(m_logFile);
     const QString ts = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
-    stream << ts << " " << prefix << " " << line.trimmed() << "\n";
+    stream << ts << " " << prefix << " " << trimmedLine << "\n";
     m_logFile->flush();
 }

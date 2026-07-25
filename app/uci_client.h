@@ -42,6 +42,7 @@ signals:
     void engineExited(int exitCode, QProcess::ExitStatus status);
     void engineError(const QString& line);
     void engineOutput(const QString& line);
+    void communication(const QString& prefix, const QString& line);
     void uciOk();
     void readyOk();
     void idName(const QString& name);

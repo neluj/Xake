@@ -1,6 +1,9 @@
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QtTest>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 
 #include "game_controller.h"
 #include "move.h"
@@ -113,6 +116,8 @@ private slots:
     void controllerRejectsMoveAfterTimeout();
     void controllerStopsWhenEngineExits();
     void controllerIgnoresDuplicateEngineBestMove();
+    void controllerWritesUnifiedEngineCommunicationLog();
+    void controllerAnnouncesEachEngineSearch();
 };
 
 void TestMoveExecution::controllerTracksExecutedMoves()
@@ -398,6 +403,64 @@ void TestMoveExecution::controllerIgnoresDuplicateEngineBestMove()
              positionAfterFirstMove);
     QCOMPARE(errorSpy.count(), 0);
     QCOMPARE(controller.isActive(), true);
+}
+
+void TestMoveExecution::controllerWritesUnifiedEngineCommunicationLog()
+{
+    QTemporaryDir logDir;
+    QVERIFY(logDir.isValid());
+
+    GameController controller;
+    QSignalSpy logSpy(&controller, &GameController::communicationLogged);
+    MatchConfig config = humanVsHumanConfig(QString::fromLatin1(kStartFen));
+    config.player1.name = QStringLiteral("Alpha");
+    config.player2.name = QStringLiteral("Beta");
+
+    QVERIFY(controller.startMatch(config,
+                                  kStartFen,
+                                  logDir.path(),
+                                  QStringLiteral("test_game")));
+    controller.handleEngineCommunication(EngineSide::White,
+                                         QStringLiteral(">>"),
+                                         QStringLiteral("uci"));
+    controller.handleEngineCommunication(EngineSide::Black,
+                                         QStringLiteral("<<"),
+                                         QStringLiteral("id name Beta"));
+
+    const QString expectedPath = QDir(logDir.path())
+        .filePath(QStringLiteral("uci_communication.log"));
+    QCOMPARE(controller.communicationLogFilePath(), expectedPath);
+    QCOMPARE(logSpy.count(), 3);
+
+    QFile logFile(expectedPath);
+    QVERIFY(logFile.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QStringList fileLines = QString::fromUtf8(logFile.readAll())
+        .split('\n', Qt::SkipEmptyParts);
+    QCOMPARE(fileLines, controller.communicationHistory());
+    QCOMPARE(fileLines.size(), 3);
+    QVERIFY(fileLines.at(0).contains(QStringLiteral("[Session] ## match test_game started")));
+    QVERIFY(fileLines.at(1).contains(QStringLiteral("[White: Alpha] >> uci")));
+    QVERIFY(fileLines.at(2).contains(QStringLiteral("[Black: Beta] << id name Beta")));
+}
+
+void TestMoveExecution::controllerAnnouncesEachEngineSearch()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)), kStartFen));
+
+    controller.m_config.player1.type = PlayerType::Engine;
+    controller.m_whiteSession.active = true;
+    controller.m_whiteSession.readyOk = true;
+
+    QSignalSpy searchSpy(&controller, &GameController::engineSearchStarted);
+    controller.sendGoForSide(EngineSide::White);
+
+    QCOMPARE(searchSpy.count(), 1);
+    QCOMPARE(searchSpy.at(0).at(0).value<EngineSide>(), EngineSide::White);
+    QVERIFY(controller.m_whiteSession.searching);
+
+    controller.sendGoForSide(EngineSide::White);
+    QCOMPARE(searchSpy.count(), 1);
 }
 
 int main(int argc, char **argv)

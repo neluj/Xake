@@ -9,8 +9,10 @@
 
 #include <QAction>
 #include <QDateTime>
+#include <QDialog>
 #include <QDir>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
@@ -18,9 +20,12 @@
 #include <QPalette>
 #include <QPlainTextEdit>
 #include <QPixmap>
+#include <QPushButton>
+#include <QScrollBar>
 #include <QString>
 #include <QSvgRenderer>
 #include <QTextCursor>
+#include <QVBoxLayout>
 
 #include <cmath>
 #include <string>
@@ -82,6 +87,18 @@ void configureMoveList(QPlainTextEdit *editor)
     editor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     editor->setStyleSheet(
         QStringLiteral("QPlainTextEdit { background: transparent; border: none; padding: 0px; }"));
+}
+
+void configureEngineOutput(QPlainTextEdit *editor)
+{
+    configureMoveList(editor);
+    if (!editor) {
+        return;
+    }
+
+    editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    editor->setLineWrapMode(QPlainTextEdit::NoWrap);
+    editor->setMaximumBlockCount(3000);
 }
 
 QString formattedMoveList(const QStringList& moves)
@@ -389,7 +406,13 @@ MainWindow::MainWindow(QWidget *parent)
     setColorIndicator(ui->labelBlackTime, BLACK);
     configureMoveList(ui->gameMovesText);
     configureMoveList(ui->tournamentHistoryText);
+    configureEngineOutput(ui->whiteEngineOutputText);
+    configureEngineOutput(ui->blackEngineOutputText);
     setTournamentTabActive(false);
+
+    connect(ui->debugButton, &QPushButton::clicked, this, [this]() {
+        openDebugWindow();
+    });
 
     if (m_clockUiTimer) {
         m_clockUiTimer->setInterval(100);
@@ -438,8 +461,55 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    connect(m_gameController, &GameController::engineOutputReceived, this,
+            [this](EngineSide side, const QString& line) {
+        QPlainTextEdit *output = side == EngineSide::White
+            ? ui->whiteEngineOutputText
+            : ui->blackEngineOutputText;
+        if (!output) {
+            return;
+        }
+        output->appendPlainText(line);
+        output->verticalScrollBar()->setValue(output->verticalScrollBar()->maximum());
+        output->horizontalScrollBar()->setValue(output->horizontalScrollBar()->minimum());
+    });
+
+    connect(m_gameController, &GameController::engineSearchStarted, this,
+            [this](EngineSide side) {
+        QPlainTextEdit *output = side == EngineSide::White
+            ? ui->whiteEngineOutputText
+            : ui->blackEngineOutputText;
+        if (output) {
+            output->clear();
+        }
+    });
+
+    connect(m_gameController, &GameController::communicationHistoryReset, this,
+            [this]() {
+        updateDebugLogPath();
+        if (m_debugText) {
+            m_debugText->clear();
+        }
+    });
+
+    connect(m_gameController, &GameController::communicationLogged, this,
+            [this](const QString& line) {
+        if (m_debugText) {
+            m_debugText->appendPlainText(line);
+            m_debugText->moveCursor(QTextCursor::End);
+        }
+    });
+
+    connect(m_gameController, &GameController::communicationLogError, this,
+            [this](const QString& message) {
+        if (ui && ui->statusbar) {
+            ui->statusbar->showMessage(message);
+        }
+    });
+
     connect(m_gameController, &GameController::matchStarted, this, [this](const MatchConfig& match) {
         updatePlayerNames(match);
+        updateEngineOutputPanels(match);
         updateSideToMoveLabel(m_gameController->currentPosition());
         updateGameMoveList();
         updateClockUi();
@@ -706,6 +776,80 @@ void MainWindow::updatePlayerNames(const MatchConfig& match)
 
     ui->labelWhitePlayer->setText(playerDisplayName(match.player1, tr("Player")));
     ui->labelBlackPlayer->setText(playerDisplayName(match.player2, tr("Player")));
+}
+
+void MainWindow::updateEngineOutputPanels(const MatchConfig& match)
+{
+    if (!ui) {
+        return;
+    }
+
+    const auto outputTitle = [this](const QString& color, const PlayerConfig& player) {
+        if (player.type != PlayerType::Engine) {
+            return tr("%1 - No engine").arg(color);
+        }
+        return tr("%1 - %2")
+            .arg(color, playerDisplayName(player, tr("Unnamed engine")));
+    };
+
+    if (ui->labelWhiteEngineOutput) {
+        ui->labelWhiteEngineOutput->setText(outputTitle(tr("White"), match.player1));
+    }
+    if (ui->labelBlackEngineOutput) {
+        ui->labelBlackEngineOutput->setText(outputTitle(tr("Black"), match.player2));
+    }
+    if (ui->whiteEngineOutputText) {
+        ui->whiteEngineOutputText->clear();
+    }
+    if (ui->blackEngineOutputText) {
+        ui->blackEngineOutputText->clear();
+    }
+}
+
+void MainWindow::openDebugWindow()
+{
+    if (m_debugDialog) {
+        m_debugDialog->show();
+        m_debugDialog->raise();
+        m_debugDialog->activateWindow();
+        return;
+    }
+
+    auto *dialog = new QDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(tr("Engine communication debug"));
+    dialog->resize(920, 620);
+
+    auto *layout = new QVBoxLayout(dialog);
+    auto *pathLabel = new QLabel(dialog);
+    pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    pathLabel->setWordWrap(true);
+    layout->addWidget(pathLabel);
+
+    auto *debugText = new QPlainTextEdit(dialog);
+    configureEngineOutput(debugText);
+    debugText->setMaximumBlockCount(0);
+    debugText->setPlainText(m_gameController->communicationHistory().join('\n'));
+    debugText->moveCursor(QTextCursor::End);
+    layout->addWidget(debugText);
+
+    m_debugDialog = dialog;
+    m_debugPathLabel = pathLabel;
+    m_debugText = debugText;
+    updateDebugLogPath();
+    dialog->show();
+}
+
+void MainWindow::updateDebugLogPath()
+{
+    if (!m_debugPathLabel) {
+        return;
+    }
+
+    const QString logPath = m_gameController->communicationLogFilePath();
+    m_debugPathLabel->setText(logPath.isEmpty()
+                                  ? tr("No communication log is active.")
+                                  : tr("Log: %1").arg(QDir::toNativeSeparators(logPath)));
 }
 
 void MainWindow::updateClockUi()

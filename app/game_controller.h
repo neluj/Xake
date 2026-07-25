@@ -3,6 +3,7 @@
 #include "match_settings_types.h"
 #include "position.h"
 
+#include <QFile>
 #include <QObject>
 #include <QProcess>
 #include <QString>
@@ -19,6 +20,8 @@ enum class EngineSide {
     White,
     Black
 };
+
+Q_DECLARE_METATYPE(EngineSide)
 
 struct EngineSession {
     UciClient *client = nullptr;
@@ -60,6 +63,7 @@ class GameController : public QObject
 
 public:
     explicit GameController(QObject *parent = nullptr);
+    ~GameController() override;
 
     bool startMatch(const MatchConfig& config,
                     const std::string& fen,
@@ -73,6 +77,8 @@ public:
     MatchConfig matchConfig() const;
     Xake::Position currentPosition() const;
     QStringList moveHistoryUci() const;
+    QStringList communicationHistory() const;
+    QString communicationLogFilePath() const;
     bool timeControlEnabled() const;
     qint64 remainingTimeMs(Xake::Color side) const;
 
@@ -84,6 +90,11 @@ signals:
     void gameFinished(const GameResult& result);
     void gameAborted(const QString& title, const QString& message);
     void errorOccurred(const QString& title, const QString& message);
+    void engineSearchStarted(EngineSide side);
+    void engineOutputReceived(EngineSide side, const QString& line);
+    void communicationHistoryReset();
+    void communicationLogged(const QString& line);
+    void communicationLogError(const QString& message);
 
 private slots:
     void handleTurnTimeout();
@@ -105,14 +116,21 @@ private:
     bool finishGameIfTimeExpired();
     bool finishGameOnTime(Xake::Color flaggedSide);
     bool startEngineForPlayer(EngineSession& session,
-                              const PlayerConfig& player,
-                              EngineSide side);
+                              const PlayerConfig& player);
     void stopEngines();
     void startSideTimer(Xake::Color side);
     void stopSideTimer(Xake::Color side);
     void startTurnIfReady();
     void handleEngineError(EngineSide side, const QString& line);
     void handleEngineExited(EngineSide side, int exitCode, QProcess::ExitStatus status);
+    void handleEngineCommunication(EngineSide side,
+                                   const QString& prefix,
+                                   const QString& line);
+    void prepareCommunicationLog();
+    void writeCommunicationLog(const QString& source,
+                               const QString& prefix,
+                               const QString& line);
+    QString engineDisplayName(EngineSide side) const;
     void handleUciOk(EngineSide side);
     void handleReadyOk(EngineSide side);
     void handleBestMove(EngineSide side, const QString& move);
@@ -139,5 +157,8 @@ private:
     QTimer *m_flagTimer = nullptr;
     QString m_logDir;
     QString m_logTag;
+    QFile m_communicationLogFile;
+    QStringList m_communicationHistory;
+    bool m_communicationLogErrorReported = false;
     int m_maxFullMoves = 0;
 };
