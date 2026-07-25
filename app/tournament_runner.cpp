@@ -103,6 +103,7 @@ QJsonObject gameRecordToJson(const TournamentGameRecord& record)
                                         : record.aborted ? QStringLiteral("aborted")
                                                          : QStringLiteral("in_progress");
     object["startedAt"] = record.startedAtIso;
+    object["colorsSwapped"] = record.colorsSwapped;
     if (!record.finishedAtIso.isEmpty()) {
         object["finishedAt"] = record.finishedAtIso;
     }
@@ -229,6 +230,7 @@ void TournamentRunner::startNextGame()
     record.gameNumber = m_currentGameNumber;
     record.match = match;
     record.startedAtIso = currentTimestamp();
+    record.colorsSwapped = m_currentColorsSwapped;
     m_gameRecords.append(record);
     persistReport();
 

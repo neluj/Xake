@@ -94,6 +94,9 @@ void TestTournamentRunner::playsAllGamesAndAlternatesColors()
     QCOMPARE(runner.summary().blackWins, 0);
     QCOMPARE(secondGame.player1.name, QStringLiteral("Player 2"));
     QCOMPARE(secondGame.player2.name, QStringLiteral("Player 1"));
+    QCOMPARE(runner.gameRecords().size(), 2);
+    QCOMPARE(runner.gameRecords().at(0).colorsSwapped, false);
+    QCOMPARE(runner.gameRecords().at(1).colorsSwapped, true);
 
     QVERIFY(controller.applyHumanMove(makeCandidate('f', '7', 'g', '7')));
     QTRY_VERIFY(finished);
@@ -188,6 +191,7 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     QCOMPARE(games.size(), 1);
     const QJsonObject game = games.at(0).toObject();
     QCOMPARE(game.value(QStringLiteral("status")).toString(), QStringLiteral("completed"));
+    QCOMPARE(game.value(QStringLiteral("colorsSwapped")).toBool(), false);
     QCOMPARE(game.value(QStringLiteral("result")).toString(), QStringLiteral("1-0"));
     QCOMPARE(game.value(QStringLiteral("termination")).toString(), QStringLiteral("checkmate"));
     QCOMPARE(game.value(QStringLiteral("white")).toObject()

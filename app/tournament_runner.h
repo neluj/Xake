@@ -28,6 +28,7 @@ struct TournamentGameRecord {
     QString startedAtIso;
     QString finishedAtIso;
     QStringList moves;
+    bool colorsSwapped = false;
     bool completed = false;
     bool aborted = false;
     GameResult result;
