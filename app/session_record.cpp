@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -26,6 +27,8 @@ QJsonObject gameToJson(const GameConfig& game)
     obj["movesToGo"] = game.movesToGo;
     obj["useStartPos"] = game.useStartPos;
     obj["startPosition"] = game.startPosition;
+    obj["useOpeningFile"] = game.useOpeningFile;
+    obj["openingFilePath"] = game.openingFilePath;
     return obj;
 }
 
@@ -83,6 +86,18 @@ bool writeSessionRecord(const SessionRecord& record,
     root["logDir"] = record.logDir;
     root["match"] = matchToJson(record.match);
     root["startFen"] = record.startFen;
+    if (record.openingCount > 0) {
+        QJsonObject opening;
+        opening["count"] = record.openingCount;
+        opening["name"] = record.openingName;
+        opening["finalFen"] = record.finalOpeningFen;
+        QJsonArray moves;
+        for (const QString& move : record.openingMoves) {
+            moves.append(move);
+        }
+        opening["moves"] = moves;
+        root["opening"] = opening;
+    }
     if (record.hasTournament) {
         root["tournament"] = tournamentToJson(record.tournament);
     }

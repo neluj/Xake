@@ -1,5 +1,7 @@
 #include "match_settings_validation.h"
 
+#include <QFile>
+#include <QTemporaryDir>
 #include <QtTest/QtTest>
 
 class TestMatchValidation : public QObject
@@ -13,6 +15,7 @@ private slots:
     void validateMissingStartPosition();
     void validateInvalidFen();
     void validateTournamentFields();
+    void validateOpeningFile();
     void validMatchConfig();
 };
 
@@ -104,6 +107,37 @@ void TestMatchValidation::validateTournamentFields()
     config.gamesPerPairing = 0;
     error = validateTournamentConfig(config);
     QCOMPARE(error, ValidationError::InvalidGamesPerPairing);
+}
+
+void TestMatchValidation::validateOpeningFile()
+{
+    MatchConfig config;
+    config.player1.type = PlayerType::Human;
+    config.player1.name = QStringLiteral("Human 1");
+    config.player2.type = PlayerType::Human;
+    config.player2.name = QStringLiteral("Human 2");
+    config.game.useOpeningFile = true;
+
+    QCOMPARE(validateMatchConfig(config), ValidationError::MissingOpeningFile);
+
+    config.game.openingFilePath = QStringLiteral("missing.pgn");
+    QCOMPARE(validateMatchConfig(config), ValidationError::OpeningFileNotFound);
+
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString invalidPath = directory.filePath(QStringLiteral("openings.txt"));
+    QFile invalidFile(invalidPath);
+    QVERIFY(invalidFile.open(QIODevice::WriteOnly));
+    invalidFile.close();
+    config.game.openingFilePath = invalidPath;
+    QCOMPARE(validateMatchConfig(config), ValidationError::UnsupportedOpeningFile);
+
+    const QString validPath = directory.filePath(QStringLiteral("openings.pgn"));
+    QFile validFile(validPath);
+    QVERIFY(validFile.open(QIODevice::WriteOnly));
+    validFile.close();
+    config.game.openingFilePath = validPath;
+    QCOMPARE(validateMatchConfig(config), ValidationError::None);
 }
 
 void TestMatchValidation::validMatchConfig()

@@ -45,6 +45,11 @@ TournamentConfig tournamentConfig(const QString& fen, int games, int maxMoves = 
     return config;
 }
 
+QVector<OpeningEntry> singleOpening(const QString& fen)
+{
+    return {OpeningEntry{1, QStringLiteral("Test opening"), fen, fen, {}}};
+}
+
 } // namespace
 
 class TestTournamentRunner : public QObject
@@ -55,6 +60,7 @@ private slots:
     void playsAllGamesAndAlternatesColors();
     void drawsAtTournamentMoveLimit();
     void writesTournamentReportWithMoves();
+    void reusesEachOpeningWithBothColors();
 };
 
 void TestTournamentRunner::playsAllGamesAndAlternatesColors()
@@ -80,7 +86,7 @@ void TestTournamentRunner::playsAllGamesAndAlternatesColors()
     });
 
     QVERIFY(runner.start(tournamentConfig(QString::fromLatin1(kMateInOneFen), 2),
-                          kMateInOneFen,
+                          singleOpening(QString::fromLatin1(kMateInOneFen)),
                           QString(),
                           QStringLiteral("test")));
     QCOMPARE(startedGames, 1);
@@ -130,7 +136,7 @@ void TestTournamentRunner::drawsAtTournamentMoveLimit()
     });
 
     QVERIFY(runner.start(tournamentConfig(QString::fromLatin1(kStartFen), 1, 1),
-                          kStartFen,
+                          singleOpening(QString::fromLatin1(kStartFen)),
                           QString(),
                           QStringLiteral("test")));
     QVERIFY(controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
@@ -159,7 +165,7 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     });
 
     QVERIFY(runner.start(tournamentConfig(QString::fromLatin1(kMateInOneFen), 1),
-                         kMateInOneFen,
+                         singleOpening(QString::fromLatin1(kMateInOneFen)),
                          reportDir.path(),
                          QStringLiteral("report_test")));
     QVERIFY(controller.applyHumanMove(makeCandidate('f', '7', 'g', '7')));
@@ -204,6 +210,50 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     const QJsonArray moves = game.value(QStringLiteral("moves")).toArray();
     QCOMPARE(moves.size(), 1);
     QCOMPARE(moves.at(0).toString(), QStringLiteral("f7g7"));
+
+    const QJsonObject opening = game.value(QStringLiteral("opening")).toObject();
+    QCOMPARE(opening.value(QStringLiteral("index")).toInt(), 1);
+    QCOMPARE(opening.value(QStringLiteral("name")).toString(),
+             QStringLiteral("Test opening"));
+}
+
+void TestTournamentRunner::reusesEachOpeningWithBothColors()
+{
+    GameController controller;
+    TournamentRunner runner(&controller);
+    bool finished = false;
+    int startedGames = 0;
+    connect(&runner, &TournamentRunner::tournamentGameStarted, this,
+            [&startedGames](int, int, const MatchConfig&) {
+        ++startedGames;
+    });
+    connect(&runner, &TournamentRunner::tournamentFinished, this,
+            [&finished](const TournamentSummary&) {
+        finished = true;
+    });
+
+    const QString fen = QString::fromLatin1(kMateInOneFen);
+    const QVector<OpeningEntry> openings{
+        OpeningEntry{11, QStringLiteral("Opening A"), fen, fen, {}},
+        OpeningEntry{22, QStringLiteral("Opening B"), fen, fen, {}}
+    };
+    QVERIFY(runner.start(tournamentConfig(fen, 4),
+                         openings,
+                         QString(),
+                         QStringLiteral("opening_pairs")));
+
+    for (int game = 0; game < 4; ++game) {
+        QTRY_COMPARE(startedGames, game + 1);
+        QVERIFY(controller.applyHumanMove(makeCandidate('f', '7', 'g', '7')));
+    }
+    QTRY_VERIFY(finished);
+
+    const QVector<TournamentGameRecord> records = runner.gameRecords();
+    QCOMPARE(records.size(), 4);
+    QCOMPARE(records.at(0).openingIndex, 11);
+    QCOMPARE(records.at(1).openingIndex, 11);
+    QCOMPARE(records.at(2).openingIndex, 22);
+    QCOMPARE(records.at(3).openingIndex, 22);
 }
 
 int main(int argc, char **argv)

@@ -29,18 +29,21 @@ public:
 private:
     void applyTimeControlSelection();
     void rememberCustomTimeSettings();
+    void applyOpeningFileSelection();
     void applyPlayerType(QComboBox *typeCombo,
                          QStackedWidget *stack,
                          QLineEdit *nameEdit,
                          QLineEdit *enginePathEdit,
                          QPushButton *browseButton);
     void browseEngine(QLineEdit *targetEdit);
+    void browseOpeningFile();
     PlayerConfig makePlayerConfig(QComboBox *typeCombo,
                                   QLineEdit *nameEdit,
                                   QLineEdit *enginePathEdit) const;
 
     Ui::MatchSettingsWidget *ui;
     QString m_lastEngineDir;
+    QString m_lastOpeningDir;
     int m_customBaseTimeSeconds = 300;
     int m_customIncrementSeconds = 0;
     int m_customMovesToGo = 0;

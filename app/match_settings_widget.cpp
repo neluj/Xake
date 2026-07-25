@@ -81,14 +81,22 @@ MatchSettingsWidget::MatchSettingsWidget(QWidget *parent)
     }
 
     if (ui->useStartPosCheckBox) {
-        connect(ui->useStartPosCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
-            if (ui->startPositionEdit) {
-                ui->startPositionEdit->setEnabled(!checked);
-            }
+        connect(ui->useStartPosCheckBox, &QCheckBox::toggled, this, [this](bool) {
+            applyOpeningFileSelection();
         });
-        ui->startPositionEdit->setEnabled(!ui->useStartPosCheckBox->isChecked());
+    }
+    if (ui->useOpeningFileCheckBox) {
+        connect(ui->useOpeningFileCheckBox, &QCheckBox::toggled, this, [this](bool) {
+            applyOpeningFileSelection();
+        });
+    }
+    if (ui->openingFileBrowseButton) {
+        connect(ui->openingFileBrowseButton, &QPushButton::clicked, this, [this]() {
+            browseOpeningFile();
+        });
     }
 
+    applyOpeningFileSelection();
     applyTimeControlSelection();
 }
 
@@ -118,6 +126,10 @@ GameConfig MatchSettingsWidget::gameConfig() const
     config.baseTimeSeconds = ui->baseTimeSpin->value();
     config.incrementSeconds = ui->incrementSpin->value();
     config.movesToGo = ui->movesToGoSpin->value();
+    config.useOpeningFile = ui->useOpeningFileCheckBox->isChecked();
+    config.openingFilePath = config.useOpeningFile
+        ? ui->openingFileEdit->text().trimmed()
+        : QString();
     config.useStartPos = ui->useStartPosCheckBox->isChecked();
     if (config.useStartPos) {
         config.startPosition = QStringLiteral("startpos");
@@ -125,6 +137,22 @@ GameConfig MatchSettingsWidget::gameConfig() const
         config.startPosition = ui->startPositionEdit->text().trimmed();
     }
     return config;
+}
+
+void MatchSettingsWidget::applyOpeningFileSelection()
+{
+    if (!ui || !ui->useOpeningFileCheckBox || !ui->useStartPosCheckBox
+        || !ui->startPositionEdit || !ui->openingFileEdit
+        || !ui->openingFileBrowseButton) {
+        return;
+    }
+
+    const bool useOpeningFile = ui->useOpeningFileCheckBox->isChecked();
+    ui->useStartPosCheckBox->setEnabled(!useOpeningFile);
+    ui->startPositionEdit->setEnabled(
+        !useOpeningFile && !ui->useStartPosCheckBox->isChecked());
+    ui->openingFileEdit->setEnabled(useOpeningFile);
+    ui->openingFileBrowseButton->setEnabled(useOpeningFile);
 }
 
 void MatchSettingsWidget::applyTimeControlSelection()
@@ -242,6 +270,27 @@ void MatchSettingsWidget::browseEngine(QLineEdit *targetEdit)
 
     m_lastEngineDir = QFileInfo(path).absolutePath();
     targetEdit->setText(path);
+}
+
+void MatchSettingsWidget::browseOpeningFile()
+{
+    QString startDir = m_lastOpeningDir;
+    if (startDir.isEmpty()) {
+        startDir = QDir::homePath();
+    }
+
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        tr("Select Opening File"),
+        startDir,
+        tr("Opening files (*.pgn *.epd *.edp);;PGN files (*.pgn);;"
+           "EPD files (*.epd *.edp);;All files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    m_lastOpeningDir = QFileInfo(path).absolutePath();
+    ui->openingFileEdit->setText(path);
 }
 
 PlayerConfig MatchSettingsWidget::makePlayerConfig(QComboBox *typeCombo,

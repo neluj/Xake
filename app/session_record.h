@@ -3,6 +3,7 @@
 #include "match_settings_types.h"
 
 #include <QString>
+#include <QStringList>
 
 struct SessionRecord {
     QString sessionType;
@@ -13,6 +14,10 @@ struct SessionRecord {
     bool hasTournament = false;
     TournamentConfig tournament;
     QString startFen;
+    int openingCount = 0;
+    QString openingName;
+    QString finalOpeningFen;
+    QStringList openingMoves;
 };
 
 QString sessionTagNow();

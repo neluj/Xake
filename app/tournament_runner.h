@@ -2,6 +2,7 @@
 
 #include "game_controller.h"
 #include "match_settings_types.h"
+#include "opening_book.h"
 
 #include <QObject>
 #include <QString>
@@ -34,6 +35,10 @@ struct TournamentGameRecord {
     GameResult result;
     QString abortTitle;
     QString abortMessage;
+    int openingIndex = 0;
+    QString openingName;
+    QString startFen;
+    QStringList openingMoves;
 };
 
 class TournamentRunner : public QObject
@@ -44,13 +49,14 @@ public:
     explicit TournamentRunner(GameController *gameController, QObject *parent = nullptr);
 
     bool start(const TournamentConfig& config,
-               const std::string& startFen,
+               const QVector<OpeningEntry>& openings,
                const QString& logDir,
                const QString& sessionTag);
     bool isActive() const;
     TournamentSummary summary() const;
     QVector<TournamentGameRecord> gameRecords() const;
     QString reportFilePath() const;
+    int openingCount() const;
 
 signals:
     void tournamentStarted(int totalGames);
@@ -66,6 +72,7 @@ private:
     void handleGameFinished(const GameResult& result);
     void handleGameAborted(const QString& title, const QString& message);
     MatchConfig matchForCurrentGame() const;
+    const OpeningEntry& openingForCurrentGame() const;
     bool colorsAreSwappedForCurrentGame() const;
     void finishTournament();
     TournamentGameRecord* currentGameRecord();
@@ -74,7 +81,7 @@ private:
 
     GameController *m_gameController = nullptr;
     TournamentConfig m_config;
-    std::string m_startFen;
+    QVector<OpeningEntry> m_openings;
     QString m_logDir;
     QString m_sessionTag;
     TournamentSummary m_summary;

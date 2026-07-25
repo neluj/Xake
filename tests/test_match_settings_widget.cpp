@@ -1,4 +1,7 @@
+#include <QCheckBox>
 #include <QComboBox>
+#include <QLineEdit>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QApplication>
 #include <QtTest/QtTest>
@@ -12,6 +15,7 @@ class TestMatchSettingsWidget : public QObject
 private slots:
     void presetDisablesManualTimeFields();
     void customRestoresManualTimeFields();
+    void openingFileDisablesManualPosition();
 };
 
 void TestMatchSettingsWidget::presetDisablesManualTimeFields()
@@ -94,6 +98,41 @@ void TestMatchSettingsWidget::customRestoresManualTimeFields()
     QCOMPARE(config.baseTimeSeconds, 123);
     QCOMPARE(config.incrementSeconds, 7);
     QCOMPARE(config.movesToGo, 18);
+}
+
+void TestMatchSettingsWidget::openingFileDisablesManualPosition()
+{
+    MatchSettingsWidget widget;
+
+    auto *openingCheck =
+        widget.findChild<QCheckBox*>(QStringLiteral("useOpeningFileCheckBox"));
+    auto *openingEdit =
+        widget.findChild<QLineEdit*>(QStringLiteral("openingFileEdit"));
+    auto *openingBrowse =
+        widget.findChild<QPushButton*>(QStringLiteral("openingFileBrowseButton"));
+    auto *startPosCheck =
+        widget.findChild<QCheckBox*>(QStringLiteral("useStartPosCheckBox"));
+    auto *startPosition =
+        widget.findChild<QLineEdit*>(QStringLiteral("startPositionEdit"));
+
+    QVERIFY(openingCheck);
+    QVERIFY(openingEdit);
+    QVERIFY(openingBrowse);
+    QVERIFY(startPosCheck);
+    QVERIFY(startPosition);
+    QVERIFY(!openingEdit->isEnabled());
+    QVERIFY(!openingBrowse->isEnabled());
+
+    openingCheck->setChecked(true);
+    QVERIFY(openingEdit->isEnabled());
+    QVERIFY(openingBrowse->isEnabled());
+    QVERIFY(!startPosCheck->isEnabled());
+    QVERIFY(!startPosition->isEnabled());
+
+    openingEdit->setText(QStringLiteral("C:/openings/book.pgn"));
+    const GameConfig config = widget.gameConfig();
+    QVERIFY(config.useOpeningFile);
+    QCOMPARE(config.openingFilePath, QStringLiteral("C:/openings/book.pgn"));
 }
 
 int main(int argc, char **argv)

@@ -2,6 +2,7 @@
 #include "./ui_mainwindow.h"
 
 #include "single_game_dialog.h"
+#include "opening_book.h"
 #include "session_record.h"
 #include "tournament_dialog.h"
 #include "tournament_runner.h"
@@ -24,7 +25,9 @@
 #include <QScrollBar>
 #include <QString>
 #include <QSvgRenderer>
+#include <QTextCharFormat>
 #include <QTextCursor>
+#include <QTextDocument>
 #include <QVBoxLayout>
 
 #include <cmath>
@@ -38,6 +41,8 @@ const char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0
 const char kWhiteColorResource[] = ":/assets/colors/color_w.svg";
 const char kBlackColorResource[] = ":/assets/colors/color_b.svg";
 constexpr int kColorIndicatorSize = 28;
+const char kOpeningMoveColor[] = "#247C8F";
+const char kPlayedMoveColor[] = "#B85C2B";
 
 QPixmap colorIndicatorPixmap(Color color, int size)
 {
@@ -101,45 +106,58 @@ void configureEngineOutput(QPlainTextEdit *editor)
     editor->setMaximumBlockCount(3000);
 }
 
-QString formattedMoveList(const QStringList& moves)
+QTextCharFormat moveTextFormat(bool openingMove)
 {
-    QStringList turns;
-    for (qsizetype index = 0; index < moves.size(); index += 2) {
-        QString turn = QStringLiteral("%1. %2")
-            .arg(index / 2 + 1)
-            .arg(moves.at(index));
-        if (index + 1 < moves.size()) {
-            turn += QStringLiteral(" %1").arg(moves.at(index + 1));
-        }
-        turns.append(turn);
-    }
-    return turns.join(QStringLiteral("  "));
+    QTextCharFormat format;
+    format.setForeground(QColor(
+        openingMove ? QString::fromLatin1(kOpeningMoveColor)
+                    : QString::fromLatin1(kPlayedMoveColor)));
+    format.setFontWeight(QFont::DemiBold);
+    return format;
 }
 
-QString formattedMoveRows(const QStringList& moves)
+void configureMoveLegend(QLabel *label)
 {
-    QStringList rows;
-    for (qsizetype index = 0; index < moves.size(); index += 2) {
-        QString row = QStringLiteral("%1. %2")
-            .arg(index / 2 + 1)
-            .arg(moves.at(index));
-        if (index + 1 < moves.size()) {
-            row += QStringLiteral("     %1").arg(moves.at(index + 1));
-        }
-        rows.append(row);
-    }
-    return rows.join('\n');
-}
-
-void setMoveListText(QPlainTextEdit *editor, const QString& text)
-{
-    if (!editor) {
+    if (!label) {
         return;
     }
 
-    editor->setPlainText(text);
-    editor->moveCursor(QTextCursor::End);
-    editor->ensureCursorVisible();
+    label->setTextFormat(Qt::RichText);
+    label->setText(
+        QStringLiteral("<span style=\"color:%1; font-weight:600\">%2</span>"
+                       "&nbsp;&nbsp;|&nbsp;&nbsp;"
+                       "<span style=\"color:%3; font-weight:600\">%4</span>")
+            .arg(QString::fromLatin1(kOpeningMoveColor),
+                 QObject::tr("Opening moves"),
+                 QString::fromLatin1(kPlayedMoveColor),
+                 QObject::tr("Played moves")));
+}
+
+void appendFormattedMoves(QTextCursor& cursor,
+                          const QStringList& moves,
+                          int openingMoveCount,
+                          bool oneTurnPerRow)
+{
+    const int moveCount = static_cast<int>(moves.size());
+    const int openingCount = qBound(0, openingMoveCount, moveCount);
+    const QTextCharFormat neutralFormat;
+    for (qsizetype index = 0; index < moves.size(); ++index) {
+        if ((index % 2) == 0) {
+            if (index > 0) {
+                cursor.insertText(oneTurnPerRow ? QStringLiteral("\n")
+                                                : QStringLiteral("  "),
+                                  neutralFormat);
+            }
+            cursor.insertText(QStringLiteral("%1. ").arg(index / 2 + 1),
+                              neutralFormat);
+        } else {
+            cursor.insertText(oneTurnPerRow ? QStringLiteral("     ")
+                                            : QStringLiteral(" "),
+                              neutralFormat);
+        }
+        cursor.insertText(moves.at(index),
+                          moveTextFormat(index < openingCount));
+    }
 }
 
 QString formatClockMs(qint64 ms)
@@ -325,9 +343,21 @@ QString compactTournamentResult(const TournamentConfig& config,
         .arg(standings.second.draws);
 }
 
-QString tournamentHistoryText(const QVector<TournamentGameRecord>& games)
+void renderTournamentHistory(QPlainTextEdit *editor,
+                             const QVector<TournamentGameRecord>& games)
 {
-    QStringList lines;
+    if (!editor) {
+        return;
+    }
+
+    editor->clear();
+    QTextCursor cursor(editor->document());
+    QTextCharFormat headerFormat;
+    headerFormat.setFontWeight(QFont::Bold);
+    QTextCharFormat openingFormat = moveTextFormat(true);
+    QTextCharFormat errorFormat;
+    errorFormat.setForeground(QColor(QStringLiteral("#A33A32")));
+
     for (const TournamentGameRecord& game : games) {
         QString status = QObject::tr("IN PROGRESS");
         if (game.completed) {
@@ -340,25 +370,37 @@ QString tournamentHistoryText(const QVector<TournamentGameRecord>& games)
             playerDisplayName(game.match.player1, QObject::tr("Player"));
         const QString blackName =
             playerDisplayName(game.match.player2, QObject::tr("Player"));
-        lines.append(
+        cursor.insertText(
             QStringLiteral("GAME %1  |  %2 - %3 : %4")
                 .arg(game.gameNumber, 3)
                 .arg(whiteName)
                 .arg(blackName)
-                .arg(status));
+                .arg(status),
+            headerFormat);
+        cursor.insertText(QStringLiteral("\n"));
+        cursor.insertText(
+            QObject::tr("Opening %1: %2")
+                .arg(game.openingIndex)
+                .arg(game.openingName),
+            openingFormat);
         if (!game.moves.isEmpty()) {
-            lines.append(formattedMoveList(game.moves));
+            cursor.insertText(QStringLiteral("\n"));
+            appendFormattedMoves(cursor,
+                                 game.moves,
+                                 static_cast<int>(game.openingMoves.size()),
+                                 false);
         }
         if (game.aborted && !game.abortMessage.isEmpty()) {
-            lines.append(QStringLiteral("     %1").arg(game.abortMessage));
+            cursor.insertText(QStringLiteral("\n%1").arg(game.abortMessage),
+                              errorFormat);
         }
-        lines.append(QString());
+        if (&game != &games.constLast()) {
+            cursor.insertText(QStringLiteral("\n\n"));
+        }
     }
 
-    if (!lines.isEmpty()) {
-        lines.removeLast();
-    }
-    return lines.join('\n');
+    editor->setTextCursor(cursor);
+    editor->ensureCursorVisible();
 }
 
 std::string resolveStartFen(const GameConfig& gameConfig)
@@ -406,6 +448,8 @@ MainWindow::MainWindow(QWidget *parent)
     setColorIndicator(ui->labelBlackTime, BLACK);
     configureMoveList(ui->gameMovesText);
     configureMoveList(ui->tournamentHistoryText);
+    configureMoveLegend(ui->labelGameMoveLegend);
+    configureMoveLegend(ui->labelTournamentMoveLegend);
     configureEngineOutput(ui->whiteEngineOutputText);
     configureEngineOutput(ui->blackEngineOutputText);
     setTournamentTabActive(false);
@@ -509,6 +553,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_gameController, &GameController::matchStarted, this, [this](const MatchConfig& match) {
         updatePlayerNames(match);
+        updateGameOpeningLabel();
         updateEngineOutputPanels(match);
         updateSideToMoveLabel(m_gameController->currentPosition());
         updateGameMoveList();
@@ -533,6 +578,10 @@ MainWindow::MainWindow(QWidget *parent)
         if (ui && ui->gameMovesText) {
             ui->gameMovesText->clear();
         }
+        m_currentOpeningName.clear();
+        m_currentOpeningIndex = 0;
+        m_currentOpeningCount = 0;
+        updateGameOpeningLabel();
     });
 
     connect(m_gameController, &GameController::errorOccurred, this,
@@ -559,9 +608,25 @@ MainWindow::MainWindow(QWidget *parent)
             [this](int gameNumber, int totalGames, const MatchConfig&) {
         if (ui && ui->labelTournamentStatus) {
             ui->labelTournamentStatus->setText(
-                tr("Game %1 of %2")
-                    .arg(gameNumber)
-                    .arg(totalGames));
+                tr("Game %1 of %2").arg(gameNumber).arg(totalGames));
+        }
+        if (ui && ui->labelTournamentOpening) {
+            const QVector<TournamentGameRecord> records =
+                m_tournamentRunner->gameRecords();
+            if (!records.isEmpty()) {
+                const TournamentGameRecord& game = records.constLast();
+                m_currentOpeningName = game.openingName;
+                m_currentOpeningIndex = game.openingIndex;
+                m_currentOpeningCount = m_tournamentRunner->openingCount();
+                updateGameOpeningLabel();
+                ui->labelTournamentOpening->setText(
+                    tr("Opening %1/%2: %3")
+                        .arg(game.openingIndex)
+                        .arg(m_tournamentRunner->openingCount())
+                        .arg(game.openingName));
+                ui->labelTournamentOpening->setToolTip(
+                    tr("Start FEN: %1").arg(game.startFen));
+            }
         }
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(
@@ -652,7 +717,25 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         return false;
     }
 
-    const std::string fen = resolveStartFen(config.game);
+    QVector<OpeningEntry> openings;
+    if (config.game.useOpeningFile) {
+        QString openingError;
+        if (!loadOpeningFile(config.game.openingFilePath, &openings, &openingError)) {
+            QMessageBox::warning(this, tr("Opening file"), openingError);
+            return false;
+        }
+    } else {
+        const QString fen = QString::fromStdString(resolveStartFen(config.game));
+        const QString name = config.game.useStartPos
+            ? tr("Start position")
+            : tr("Custom position");
+        openings.append(OpeningEntry{1, name, fen, fen, {}});
+    }
+
+    const OpeningEntry& firstOpening = openings.first();
+    m_currentOpeningName = firstOpening.name;
+    m_currentOpeningIndex = firstOpening.sourceIndex;
+    m_currentOpeningCount = static_cast<int>(openings.size());
     const QString sessionTag = sessionTagNow();
     const QString sessionType = tournament ? QStringLiteral("tournament")
                                            : QStringLiteral("match");
@@ -667,7 +750,11 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         record.startTimeIso = QDateTime::currentDateTime().toString(Qt::ISODate);
         record.logDir = sessionDir;
         record.match = config;
-        record.startFen = QString::fromStdString(fen);
+        record.startFen = firstOpening.startFen;
+        record.openingCount = static_cast<int>(openings.size());
+        record.openingName = tournament ? QString() : firstOpening.name;
+        record.finalOpeningFen = tournament ? QString() : firstOpening.finalFen;
+        record.openingMoves = tournament ? QStringList() : firstOpening.movesUci;
         if (tournament) {
             record.hasTournament = true;
             record.tournament = *tournament;
@@ -681,10 +768,20 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
     }
 
     if (tournament) {
-        return m_tournamentRunner->start(*tournament, fen, sessionDir, sessionTag);
+        return m_tournamentRunner->start(*tournament, openings, sessionDir, sessionTag);
     }
 
-    return m_gameController->startMatch(config, fen, sessionDir, sessionTag);
+    MatchConfig runtimeConfig = config;
+    runtimeConfig.game.useOpeningFile = false;
+    runtimeConfig.game.openingFilePath.clear();
+    runtimeConfig.game.useStartPos = false;
+    runtimeConfig.game.startPosition = firstOpening.startFen;
+    return m_gameController->startMatch(runtimeConfig,
+                                        firstOpening.startFen.toStdString(),
+                                        sessionDir,
+                                        sessionTag,
+                                        0,
+                                        firstOpening.movesUci);
 }
 
 void MainWindow::setTournamentTabActive(bool active)
@@ -717,11 +814,20 @@ void MainWindow::resetTournamentPanel(int totalGames)
     if (ui->labelTournamentStatus) {
         ui->labelTournamentStatus->setText(tr("Preparing tournament"));
     }
+    if (ui->labelTournamentOpening) {
+        ui->labelTournamentOpening->setText(tr("Opening: -"));
+        ui->labelTournamentOpening->setToolTip(QString());
+    }
     if (ui->labelTournamentInfo) {
         const QString reportName = QFileInfo(m_tournamentRunner->reportFilePath()).fileName();
+        const QString openingInfo = config.match.game.useOpeningFile
+            ? tr("%1 (%2 positions)")
+                  .arg(QFileInfo(config.match.game.openingFilePath).fileName())
+                  .arg(m_tournamentRunner->openingCount())
+            : tr("Configured start position");
         ui->labelTournamentInfo->setText(
             tr("Type: %1\nFormat: %2 rounds x %3 games (%4 total)\n"
-               "Time: %5 %6+%7\nReport: %8")
+               "Time: %5 %6+%7\nOpenings: %8\nReport: %9")
                 .arg(config.tournamentType)
                 .arg(config.rounds)
                 .arg(config.gamesPerPairing)
@@ -729,6 +835,7 @@ void MainWindow::resetTournamentPanel(int totalGames)
                 .arg(config.match.game.timeControl)
                 .arg(config.match.game.baseTimeSeconds)
                 .arg(config.match.game.incrementSeconds)
+                .arg(openingInfo)
                 .arg(reportName));
     }
     if (ui->tournamentHistoryText) {
@@ -754,8 +861,8 @@ void MainWindow::updateTournamentHistory()
         return;
     }
 
-    setMoveListText(ui->tournamentHistoryText,
-                    tournamentHistoryText(m_tournamentRunner->gameRecords()));
+    renderTournamentHistory(ui->tournamentHistoryText,
+                            m_tournamentRunner->gameRecords());
 }
 
 void MainWindow::updateGameMoveList()
@@ -764,8 +871,36 @@ void MainWindow::updateGameMoveList()
         return;
     }
 
-    setMoveListText(ui->gameMovesText,
-                    formattedMoveRows(m_gameController->moveHistoryUci()));
+    ui->gameMovesText->clear();
+    QTextCursor cursor(ui->gameMovesText->document());
+    appendFormattedMoves(cursor,
+                         m_gameController->moveHistoryUci(),
+                         m_gameController->initialMoveCount(),
+                         true);
+    ui->gameMovesText->setTextCursor(cursor);
+    ui->gameMovesText->ensureCursorVisible();
+}
+
+void MainWindow::updateGameOpeningLabel()
+{
+    if (!ui || !ui->labelGameOpening) {
+        return;
+    }
+
+    if (m_currentOpeningName.isEmpty()) {
+        ui->labelGameOpening->setText(tr("Opening: -"));
+        return;
+    }
+    if (m_currentOpeningCount > 1) {
+        ui->labelGameOpening->setText(
+            tr("Opening %1/%2: %3")
+                .arg(m_currentOpeningIndex)
+                .arg(m_currentOpeningCount)
+                .arg(m_currentOpeningName));
+        return;
+    }
+    ui->labelGameOpening->setText(
+        tr("Opening: %1").arg(m_currentOpeningName));
 }
 
 void MainWindow::updatePlayerNames(const MatchConfig& match)

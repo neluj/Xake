@@ -2,6 +2,8 @@
 
 #include "position.h"
 
+#include <QFileInfo>
+
 using namespace Xake;
 
 void normalizeMatchConfig(MatchConfig &config)
@@ -11,6 +13,7 @@ void normalizeMatchConfig(MatchConfig &config)
     config.player1.enginePath = config.player1.enginePath.trimmed();
     config.player2.enginePath = config.player2.enginePath.trimmed();
     config.game.startPosition = config.game.startPosition.trimmed();
+    config.game.openingFilePath = config.game.openingFilePath.trimmed();
 }
 
 ValidationError validateMatchConfig(const MatchConfig &config)
@@ -31,10 +34,26 @@ ValidationError validateMatchConfig(const MatchConfig &config)
         && config.player2.enginePath.trimmed().isEmpty()) {
         return ValidationError::MissingEnginePlayer2;
     }
-    if (!config.game.useStartPos && config.game.startPosition.trimmed().isEmpty()) {
+    if (config.game.useOpeningFile) {
+        const QString openingPath = config.game.openingFilePath.trimmed();
+        if (openingPath.isEmpty()) {
+            return ValidationError::MissingOpeningFile;
+        }
+        const QFileInfo openingFile(openingPath);
+        if (!openingFile.exists() || !openingFile.isFile()) {
+            return ValidationError::OpeningFileNotFound;
+        }
+        const QString suffix = openingFile.suffix().toLower();
+        if (suffix != QStringLiteral("pgn")
+            && suffix != QStringLiteral("epd")
+            && suffix != QStringLiteral("edp")) {
+            return ValidationError::UnsupportedOpeningFile;
+        }
+    } else if (!config.game.useStartPos
+               && config.game.startPosition.trimmed().isEmpty()) {
         return ValidationError::MissingStartPosition;
     }
-    if (!config.game.useStartPos) {
+    if (!config.game.useOpeningFile && !config.game.useStartPos) {
         const QString fenText = config.game.startPosition.trimmed();
         if (fenText.compare(QStringLiteral("startpos"), Qt::CaseInsensitive) != 0) {
             Position pos;
@@ -81,6 +100,12 @@ QString validationErrorTitle(ValidationError error)
         return QStringLiteral("Missing start position");
     case ValidationError::InvalidStartPosition:
         return QStringLiteral("Invalid start position");
+    case ValidationError::MissingOpeningFile:
+        return QStringLiteral("Missing opening file");
+    case ValidationError::OpeningFileNotFound:
+        return QStringLiteral("Opening file not found");
+    case ValidationError::UnsupportedOpeningFile:
+        return QStringLiteral("Unsupported opening file");
     case ValidationError::InvalidRounds:
         return QStringLiteral("Invalid rounds");
     case ValidationError::InvalidGamesPerPairing:
@@ -107,6 +132,12 @@ QString validationErrorMessage(ValidationError error)
         return QStringLiteral("Enter a start position or enable startpos.");
     case ValidationError::InvalidStartPosition:
         return QStringLiteral("Start position is not a valid FEN.");
+    case ValidationError::MissingOpeningFile:
+        return QStringLiteral("Select a PGN or EPD opening file.");
+    case ValidationError::OpeningFileNotFound:
+        return QStringLiteral("The selected opening file does not exist.");
+    case ValidationError::UnsupportedOpeningFile:
+        return QStringLiteral("Opening files must use the .pgn, .epd or .edp extension.");
     case ValidationError::InvalidRounds:
         return QStringLiteral("Rounds must be at least 1.");
     case ValidationError::InvalidGamesPerPairing:

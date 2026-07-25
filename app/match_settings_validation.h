@@ -10,6 +10,9 @@ enum class ValidationError {
     MissingEnginePlayer2,
     MissingStartPosition,
     InvalidStartPosition,
+    MissingOpeningFile,
+    OpeningFileNotFound,
+    UnsupportedOpeningFile,
     InvalidRounds,
     InvalidGamesPerPairing
 };

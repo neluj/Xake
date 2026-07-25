@@ -10,6 +10,8 @@ set(APP_SOURCES
     match_settings_types.h
     match_settings_validation.cpp
     match_settings_validation.h
+    opening_book.cpp
+    opening_book.h
     uci_client.cpp
     uci_client.h
     single_game_dialog.cpp

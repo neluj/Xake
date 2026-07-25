@@ -118,6 +118,7 @@ private slots:
     void controllerIgnoresDuplicateEngineBestMove();
     void controllerWritesUnifiedEngineCommunicationLog();
     void controllerAnnouncesEachEngineSearch();
+    void controllerStartsAfterOpeningMoves();
 };
 
 void TestMoveExecution::controllerTracksExecutedMoves()
@@ -461,6 +462,28 @@ void TestMoveExecution::controllerAnnouncesEachEngineSearch()
 
     controller.sendGoForSide(EngineSide::White);
     QCOMPARE(searchSpy.count(), 1);
+}
+
+void TestMoveExecution::controllerStartsAfterOpeningMoves()
+{
+    GameController controller;
+    MatchConfig config = humanVsHumanConfig(QString::fromLatin1(kStartFen));
+
+    QVERIFY(controller.startMatch(
+        config,
+        kStartFen,
+        QString(),
+        QString(),
+        0,
+        QStringList({"e2e4", "e7e5", "g1f3"})));
+
+    QCOMPARE(controller.moveHistoryUci(),
+             QStringList({"e2e4", "e7e5", "g1f3"}));
+    QCOMPARE(controller.initialMoveCount(), 3);
+    QCOMPARE(controller.m_moveHistory.size(), 0);
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             QStringLiteral(
+                 "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2"));
 }
 
 int main(int argc, char **argv)

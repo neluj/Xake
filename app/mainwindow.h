@@ -38,6 +38,7 @@ private:
     void updateTournamentStandings();
     void updateTournamentHistory();
     void updateGameMoveList();
+    void updateGameOpeningLabel();
     void updatePlayerNames(const MatchConfig& match);
     void updateEngineOutputPanels(const MatchConfig& match);
     void updateDebugLogPath();
@@ -48,6 +49,9 @@ private:
     Ui::MainWindow *ui;
     UciClient *m_uciClient;
     QString m_enginePath;
+    QString m_currentOpeningName;
+    int m_currentOpeningIndex = 0;
+    int m_currentOpeningCount = 0;
     AppState m_state;
     GameController *m_gameController;
     TournamentRunner *m_tournamentRunner;

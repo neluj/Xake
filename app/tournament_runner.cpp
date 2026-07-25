@@ -110,6 +110,17 @@ QJsonObject gameRecordToJson(const TournamentGameRecord& record)
     object["white"] = playerToJson(record.match.player1);
     object["black"] = playerToJson(record.match.player2);
 
+    QJsonObject opening;
+    opening["index"] = record.openingIndex;
+    opening["name"] = record.openingName;
+    opening["startFen"] = record.startFen;
+    QJsonArray openingMoves;
+    for (const QString& move : record.openingMoves) {
+        openingMoves.append(move);
+    }
+    opening["moves"] = openingMoves;
+    object["opening"] = opening;
+
     QJsonArray moves;
     for (const QString& move : record.moves) {
         moves.append(move);
@@ -146,11 +157,11 @@ TournamentRunner::TournamentRunner(GameController *gameController, QObject *pare
 }
 
 bool TournamentRunner::start(const TournamentConfig& config,
-                             const std::string& startFen,
+                             const QVector<OpeningEntry>& openings,
                              const QString& logDir,
                              const QString& sessionTag)
 {
-    if (m_active || !m_gameController) {
+    if (m_active || !m_gameController || openings.isEmpty()) {
         return false;
     }
 
@@ -167,7 +178,7 @@ bool TournamentRunner::start(const TournamentConfig& config,
     }
 
     m_config = normalized;
-    m_startFen = startFen;
+    m_openings = openings;
     m_logDir = logDir;
     m_sessionTag = sessionTag;
     m_summary = TournamentSummary{static_cast<int>(totalGames)};
@@ -212,6 +223,11 @@ QString TournamentRunner::reportFilePath() const
     return m_reportFilePath;
 }
 
+int TournamentRunner::openingCount() const
+{
+    return static_cast<int>(m_openings.size());
+}
+
 void TournamentRunner::startNextGame()
 {
     if (!m_active) {
@@ -225,12 +241,18 @@ void TournamentRunner::startNextGame()
     m_currentGameNumber = m_nextGameNumber++;
     m_currentColorsSwapped = colorsAreSwappedForCurrentGame();
     const MatchConfig match = matchForCurrentGame();
+    const OpeningEntry& opening = openingForCurrentGame();
 
     TournamentGameRecord record;
     record.gameNumber = m_currentGameNumber;
     record.match = match;
     record.startedAtIso = currentTimestamp();
     record.colorsSwapped = m_currentColorsSwapped;
+    record.openingIndex = opening.sourceIndex;
+    record.openingName = opening.name;
+    record.startFen = opening.startFen;
+    record.openingMoves = opening.movesUci;
+    record.moves = opening.movesUci;
     m_gameRecords.append(record);
     persistReport();
 
@@ -240,10 +262,11 @@ void TournamentRunner::startNextGame()
         .arg(m_sessionTag)
         .arg(m_currentGameNumber, 3, 10, QChar('0'));
     if (!m_gameController->startMatch(match,
-                                      m_startFen,
+                                      opening.startFen.toStdString(),
                                       m_logDir,
                                       gameTag,
-                                      m_config.maxMoves)) {
+                                      m_config.maxMoves,
+                                      opening.movesUci)) {
         m_active = false;
         m_status = QStringLiteral("aborted");
         m_finishedAtIso = currentTimestamp();
@@ -348,7 +371,18 @@ MatchConfig TournamentRunner::matchForCurrentGame() const
     if (m_currentColorsSwapped) {
         std::swap(match.player1, match.player2);
     }
+    const OpeningEntry& opening = openingForCurrentGame();
+    match.game.useOpeningFile = false;
+    match.game.openingFilePath.clear();
+    match.game.useStartPos = false;
+    match.game.startPosition = opening.startFen;
     return match;
+}
+
+const OpeningEntry& TournamentRunner::openingForCurrentGame() const
+{
+    const int pairIndex = qMax(0, m_currentGameNumber - 1) / 2;
+    return m_openings.at(pairIndex % m_openings.size());
 }
 
 bool TournamentRunner::colorsAreSwappedForCurrentGame() const
@@ -423,6 +457,9 @@ bool TournamentRunner::writeReport(QString* errorOut) const
     gameSettings["baseTimeSeconds"] = m_config.match.game.baseTimeSeconds;
     gameSettings["incrementSeconds"] = m_config.match.game.incrementSeconds;
     gameSettings["movesToGo"] = m_config.match.game.movesToGo;
+    gameSettings["useOpeningFile"] = m_config.match.game.useOpeningFile;
+    gameSettings["openingFilePath"] = m_config.match.game.openingFilePath;
+    gameSettings["openingCount"] = m_openings.size();
     tournament["game"] = gameSettings;
 
     QJsonArray games;
@@ -438,7 +475,7 @@ bool TournamentRunner::writeReport(QString* errorOut) const
     if (!m_finishedAtIso.isEmpty()) {
         root["finishedAt"] = m_finishedAtIso;
     }
-    root["startFen"] = QString::fromStdString(m_startFen);
+    root["startFen"] = m_openings.isEmpty() ? QString() : m_openings.first().startFen;
     root["moveFormat"] = QStringLiteral("uci");
     root["tournament"] = tournament;
     root["summary"] = summaryToJson(m_summary);

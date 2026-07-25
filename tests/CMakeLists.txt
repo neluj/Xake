@@ -27,6 +27,16 @@ target_link_libraries(match_settings_widget_tests PRIVATE Qt6::Test Qt6::Widgets
 
 add_test(NAME match_settings_widget_tests COMMAND match_settings_widget_tests)
 
+add_executable(opening_book_tests
+    test_opening_book.cpp
+    ${CMAKE_SOURCE_DIR}/app/opening_book.cpp
+)
+
+target_include_directories(opening_book_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(opening_book_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME opening_book_tests COMMAND opening_book_tests)
+
 add_executable(move_execution_tests
     test_move_execution.cpp
     ${CMAKE_SOURCE_DIR}/app/game_controller.cpp

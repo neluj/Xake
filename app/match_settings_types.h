@@ -20,6 +20,8 @@ struct GameConfig {
     int movesToGo = 0;
     bool useStartPos = true;
     QString startPosition;
+    bool useOpeningFile = false;
+    QString openingFilePath;
 };
 
 struct MatchConfig {

@@ -69,7 +69,8 @@ public:
                     const std::string& fen,
                     const QString& logDir = QString(),
                     const QString& logTag = QString(),
-                    int maxFullMoves = 0);
+                    int maxFullMoves = 0,
+                    const QStringList& initialMoves = {});
     void stopMatch();
     bool applyHumanMove(Xake::Move move);
 
@@ -77,6 +78,7 @@ public:
     MatchConfig matchConfig() const;
     Xake::Position currentPosition() const;
     QStringList moveHistoryUci() const;
+    int initialMoveCount() const;
     QStringList communicationHistory() const;
     QString communicationLogFilePath() const;
     bool timeControlEnabled() const;
@@ -147,6 +149,7 @@ private:
     std::string m_baseFen;
     QStringList m_uciMoves;
     QVector<Xake::Move> m_moveHistory;
+    int m_initialMoveCount = 0;
     bool m_timeControlEnabled = false;
     qint64 m_whiteTimeMs = 0;
     qint64 m_blackTimeMs = 0;

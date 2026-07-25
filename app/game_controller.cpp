@@ -16,6 +16,9 @@ using namespace Xake;
 
 namespace {
 
+constexpr char kStartFen[] =
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
 SpecialMove promotionMove(PieceType pieceType)
 {
     switch (pieceType) {
@@ -147,11 +150,13 @@ bool GameController::startMatch(const MatchConfig& config,
                                 const std::string& fen,
                                 const QString& logDir,
                                 const QString& logTag,
-                                int maxFullMoves)
+                                int maxFullMoves,
+                                const QStringList& initialMoves)
 {
     stopEngines();
     m_uciMoves.clear();
     m_moveHistory.clear();
+    m_initialMoveCount = 0;
     if (m_flagTimer) {
         m_flagTimer->stop();
     }
@@ -175,10 +180,25 @@ bool GameController::startMatch(const MatchConfig& config,
     m_config = normalized;
     m_position = position;
     m_active = true;
-    m_baseFen = fen;
-    const QString startToken = m_config.game.startPosition.trimmed();
-    m_baseIsStartpos = m_config.game.useStartPos
-        || startToken.compare(QStringLiteral("startpos"), Qt::CaseInsensitive) == 0;
+    m_baseFen = position.get_FEN();
+    m_baseIsStartpos = m_baseFen == kStartFen;
+
+    for (qsizetype ply = 0; ply < initialMoves.size(); ++ply) {
+        const Move parsed = moveFromUci(initialMoves.at(ply));
+        Move appliedMove = NOMOVE;
+        if (!applyMove(parsed, &appliedMove)) {
+            m_active = false;
+            emit errorOccurred(
+                tr("Invalid opening"),
+                tr("Opening move %1 could not be applied: %2")
+                    .arg(ply + 1)
+                    .arg(initialMoves.at(ply)));
+            return false;
+        }
+        m_uciMoves.append(uciFromMove(appliedMove));
+    }
+    m_initialMoveCount = static_cast<int>(m_uciMoves.size());
+
     m_timeControlEnabled = (m_config.game.baseTimeSeconds > 0);
     m_whiteTimeMs = static_cast<qint64>(m_config.game.baseTimeSeconds) * 1000;
     m_blackTimeMs = static_cast<qint64>(m_config.game.baseTimeSeconds) * 1000;
@@ -270,6 +290,11 @@ Xake::Position GameController::currentPosition() const
 QStringList GameController::moveHistoryUci() const
 {
     return m_uciMoves;
+}
+
+int GameController::initialMoveCount() const
+{
+    return m_initialMoveCount;
 }
 
 QStringList GameController::communicationHistory() const
