@@ -129,12 +129,36 @@
        <item row="0" column="1" rowspan="2">
         <widget class="QTabWidget" name="tabWidget">
          <property name="currentIndex">
-          <number>2</number>
+          <number>0</number>
          </property>
-         <widget class="QWidget" name="tab_3">
+         <widget class="QWidget" name="tabGame">
           <attribute name="title">
-           <string>Tab 1</string>
+           <string>Game</string>
           </attribute>
+          <layout class="QVBoxLayout" name="gameTabLayout">
+           <item>
+            <widget class="QLabel" name="labelGameMovesDivider">
+             <property name="font">
+              <font>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>--------------- Moves ---------------</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPlainTextEdit" name="gameMovesText">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
          </widget>
          <widget class="QWidget" name="tab_4">
           <attribute name="title">
@@ -163,7 +187,7 @@
              <property name="wordWrap">
               <bool>true</bool>
              </property>
-           </widget>
+            </widget>
            </item>
            <item>
             <widget class="QLabel" name="labelTournamentInfoDivider">
@@ -203,7 +227,7 @@
              <property name="alignment">
               <set>Qt::AlignCenter</set>
              </property>
-           </widget>
+            </widget>
            </item>
            <item>
             <layout class="QHBoxLayout" name="tournamentScoreLayout">
@@ -278,6 +302,21 @@
               </spacer>
              </item>
             </layout>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelTournamentGamesDivider">
+             <property name="font">
+              <font>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>---------- Games and moves ----------</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
            </item>
            <item>
             <widget class="QPlainTextEdit" name="tournamentHistoryText">

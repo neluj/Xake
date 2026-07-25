@@ -72,11 +72,13 @@ public:
     bool isActive() const;
     MatchConfig matchConfig() const;
     Xake::Position currentPosition() const;
+    QStringList moveHistoryUci() const;
     bool timeControlEnabled() const;
     qint64 remainingTimeMs(Xake::Color side) const;
 
 signals:
     void positionChanged(const Xake::Position& position);
+    void movePlayed(int ply, const QString& uciMove);
     void matchStarted(const MatchConfig& config);
     void matchStopped();
     void gameFinished(const GameResult& result);

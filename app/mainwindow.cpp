@@ -14,9 +14,12 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPalette>
+#include <QPlainTextEdit>
 #include <QPixmap>
 #include <QString>
 #include <QSvgRenderer>
+#include <QTextCursor>
 
 #include <string>
 
@@ -60,6 +63,64 @@ void setColorIndicator(QLabel *label, Color color)
     label->setMinimumSize(kColorIndicatorSize, kColorIndicatorSize);
     label->setPixmap(colorIndicatorPixmap(color, kColorIndicatorSize));
     label->setAlignment(Qt::AlignCenter);
+}
+
+void configureMoveList(QPlainTextEdit *editor)
+{
+    if (!editor) {
+        return;
+    }
+
+    QPalette palette = editor->palette();
+    palette.setBrush(QPalette::Base, Qt::transparent);
+    editor->setPalette(palette);
+    editor->setAutoFillBackground(false);
+    editor->viewport()->setAutoFillBackground(false);
+    editor->setFrameShape(QFrame::NoFrame);
+    editor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    editor->setStyleSheet(
+        QStringLiteral("QPlainTextEdit { background: transparent; border: none; padding: 0px; }"));
+}
+
+QString formattedMoveList(const QStringList& moves)
+{
+    QStringList turns;
+    for (qsizetype index = 0; index < moves.size(); index += 2) {
+        QString turn = QStringLiteral("%1. %2")
+            .arg(index / 2 + 1)
+            .arg(moves.at(index));
+        if (index + 1 < moves.size()) {
+            turn += QStringLiteral(" %1").arg(moves.at(index + 1));
+        }
+        turns.append(turn);
+    }
+    return turns.join(QStringLiteral("  "));
+}
+
+QString formattedMoveRows(const QStringList& moves)
+{
+    QStringList rows;
+    for (qsizetype index = 0; index < moves.size(); index += 2) {
+        QString row = QStringLiteral("%1. %2")
+            .arg(index / 2 + 1)
+            .arg(moves.at(index));
+        if (index + 1 < moves.size()) {
+            row += QStringLiteral("     %1").arg(moves.at(index + 1));
+        }
+        rows.append(row);
+    }
+    return rows.join('\n');
+}
+
+void setMoveListText(QPlainTextEdit *editor, const QString& text)
+{
+    if (!editor) {
+        return;
+    }
+
+    editor->setPlainText(text);
+    editor->moveCursor(QTextCursor::End);
+    editor->ensureCursorVisible();
 }
 
 QString formatClockMs(qint64 ms)
@@ -114,6 +175,36 @@ QString tournamentResultText(const TournamentSummary& summary)
         .arg(summary.blackWins);
 }
 
+QString tournamentHistoryText(const QVector<TournamentGameRecord>& games)
+{
+    QStringList lines;
+    for (const TournamentGameRecord& game : games) {
+        QString status = QObject::tr("IN PROGRESS");
+        if (game.completed) {
+            status = gameResultText(game.result.outcome);
+        } else if (game.aborted) {
+            status = QObject::tr("ABORTED");
+        }
+
+        lines.append(
+            QStringLiteral("GAME %1  |  %2")
+                .arg(game.gameNumber, 3)
+                .arg(status));
+        if (!game.moves.isEmpty()) {
+            lines.append(formattedMoveList(game.moves));
+        }
+        if (game.aborted && !game.abortMessage.isEmpty()) {
+            lines.append(QStringLiteral("     %1").arg(game.abortMessage));
+        }
+        lines.append(QString());
+    }
+
+    if (!lines.isEmpty()) {
+        lines.removeLast();
+    }
+    return lines.join('\n');
+}
+
 std::string resolveStartFen(const GameConfig& gameConfig)
 {
     const QString start = gameConfig.startPosition.trimmed();
@@ -159,6 +250,8 @@ MainWindow::MainWindow(QWidget *parent)
     setColorIndicator(ui->labelBlackTime, BLACK);
     setColorIndicator(ui->labelTournamentWhiteColor, WHITE);
     setColorIndicator(ui->labelTournamentBlackColor, BLACK);
+    configureMoveList(ui->gameMovesText);
+    configureMoveList(ui->tournamentHistoryText);
     setTournamentTabActive(false);
 
     if (m_clockUiTimer) {
@@ -200,9 +293,18 @@ MainWindow::MainWindow(QWidget *parent)
         updateClockUi();
     });
 
+    connect(m_gameController, &GameController::movePlayed, this,
+            [this](int, const QString&) {
+        updateGameMoveList();
+        if (m_tournamentRunner && m_tournamentRunner->isActive()) {
+            updateTournamentHistory();
+        }
+    });
+
     connect(m_gameController, &GameController::matchStarted, this, [this](const MatchConfig& match) {
         updatePlayerNames(match);
         updateSideToMoveLabel(m_gameController->currentPosition());
+        updateGameMoveList();
         updateClockUi();
         if (m_clockUiTimer) {
             m_clockUiTimer->start();
@@ -220,6 +322,9 @@ MainWindow::MainWindow(QWidget *parent)
         if (ui && ui->labelWhitePlayer && ui->labelBlackPlayer) {
             ui->labelWhitePlayer->clear();
             ui->labelBlackPlayer->clear();
+        }
+        if (ui && ui->gameMovesText) {
+            ui->gameMovesText->clear();
         }
     });
 
@@ -255,16 +360,12 @@ MainWindow::MainWindow(QWidget *parent)
             ui->statusbar->showMessage(
                 tr("Tournament game %1 of %2.").arg(gameNumber).arg(totalGames));
         }
+        updateTournamentHistory();
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentGameFinished, this,
-            [this](int gameNumber, const GameResult& result) {
-        if (ui && ui->tournamentHistoryText) {
-            ui->tournamentHistoryText->appendPlainText(
-                tr("Game %1: %2")
-                    .arg(gameNumber)
-                    .arg(gameResultText(result.outcome)));
-        }
+            [this](int, const GameResult&) {
+        updateTournamentHistory();
         updateTournamentScore(m_tournamentRunner->summary());
     });
 
@@ -276,6 +377,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (ui && ui->labelTournamentStatus) {
             ui->labelTournamentStatus->setText(tr("Tournament finished"));
         }
+        updateTournamentHistory();
         updateTournamentScore(summary);
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(message);
@@ -289,13 +391,19 @@ MainWindow::MainWindow(QWidget *parent)
         if (ui && ui->labelTournamentStatus) {
             ui->labelTournamentStatus->setText(tr("Tournament aborted"));
         }
-        if (ui && ui->tournamentHistoryText) {
-            ui->tournamentHistoryText->appendPlainText(tr("Aborted: %1").arg(message));
-        }
+        updateTournamentHistory();
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(tr("%1: %2").arg(title, message));
         }
         setTournamentTabActive(false);
+    });
+
+    connect(m_tournamentRunner, &TournamentRunner::tournamentReportError, this,
+            [this](const QString& message) {
+        if (ui && ui->statusbar) {
+            ui->statusbar->showMessage(message);
+        }
+        QMessageBox::warning(this, tr("Tournament report"), message);
     });
 
     if (ui && ui->board) {
@@ -312,6 +420,7 @@ MainWindow::MainWindow(QWidget *parent)
         ui->labelWhitePlayer->clear();
         ui->labelBlackPlayer->clear();
     }
+    updateGameMoveList();
 }
 
 MainWindow::~MainWindow()
@@ -400,15 +509,18 @@ void MainWindow::resetTournamentPanel(int totalGames)
         ui->labelTournamentStatus->setText(tr("Preparing tournament"));
     }
     if (ui->labelTournamentInfo) {
+        const QString reportName = QFileInfo(m_tournamentRunner->reportFilePath()).fileName();
         ui->labelTournamentInfo->setText(
-            tr("Type: %1\nFormat: %2 rounds x %3 games (%4 total)\nTime: %5 %6+%7")
+            tr("Type: %1\nFormat: %2 rounds x %3 games (%4 total)\n"
+               "Time: %5 %6+%7\nReport: %8")
                 .arg(config.tournamentType)
                 .arg(config.rounds)
                 .arg(config.gamesPerPairing)
                 .arg(totalGames)
                 .arg(config.match.game.timeControl)
                 .arg(config.match.game.baseTimeSeconds)
-                .arg(config.match.game.incrementSeconds));
+                .arg(config.match.game.incrementSeconds)
+                .arg(reportName));
     }
     if (ui->tournamentHistoryText) {
         ui->tournamentHistoryText->clear();
@@ -423,6 +535,26 @@ void MainWindow::updateTournamentScore(const TournamentSummary& summary)
     }
 
     ui->labelTournamentScore->setText(QStringLiteral(": ") + tournamentResultText(summary));
+}
+
+void MainWindow::updateTournamentHistory()
+{
+    if (!ui || !ui->tournamentHistoryText || !m_tournamentRunner) {
+        return;
+    }
+
+    setMoveListText(ui->tournamentHistoryText,
+                    tournamentHistoryText(m_tournamentRunner->gameRecords()));
+}
+
+void MainWindow::updateGameMoveList()
+{
+    if (!ui || !ui->gameMovesText || !m_gameController) {
+        return;
+    }
+
+    setMoveListText(ui->gameMovesText,
+                    formattedMoveRows(m_gameController->moveHistoryUci()));
 }
 
 void MainWindow::updatePlayerNames(const MatchConfig& match)

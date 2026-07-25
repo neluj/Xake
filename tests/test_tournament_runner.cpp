@@ -1,4 +1,9 @@
 #include <QCoreApplication>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
 #include <QtTest>
 
 #include "game_controller.h"
@@ -49,6 +54,7 @@ class TestTournamentRunner : public QObject
 private slots:
     void playsAllGamesAndAlternatesColors();
     void drawsAtTournamentMoveLimit();
+    void writesTournamentReportWithMoves();
 };
 
 void TestTournamentRunner::playsAllGamesAndAlternatesColors()
@@ -134,6 +140,66 @@ void TestTournamentRunner::drawsAtTournamentMoveLimit()
     QCOMPARE(summary.draws, 1);
     QCOMPARE(summary.whiteWins, 0);
     QCOMPARE(summary.blackWins, 0);
+}
+
+void TestTournamentRunner::writesTournamentReportWithMoves()
+{
+    QTemporaryDir reportDir;
+    QVERIFY(reportDir.isValid());
+
+    GameController controller;
+    TournamentRunner runner(&controller);
+    bool finished = false;
+    connect(&runner, &TournamentRunner::tournamentFinished, this,
+            [&finished](const TournamentSummary&) {
+        finished = true;
+    });
+
+    QVERIFY(runner.start(tournamentConfig(QString::fromLatin1(kMateInOneFen), 1),
+                         kMateInOneFen,
+                         reportDir.path(),
+                         QStringLiteral("report_test")));
+    QVERIFY(controller.applyHumanMove(makeCandidate('f', '7', 'g', '7')));
+    QTRY_VERIFY(finished);
+
+    QCOMPARE(runner.reportFilePath(),
+             reportDir.filePath(QStringLiteral("tournament_report.json")));
+
+    QFile reportFile(runner.reportFilePath());
+    QVERIFY(reportFile.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QJsonDocument document = QJsonDocument::fromJson(reportFile.readAll());
+    QVERIFY(document.isObject());
+
+    const QJsonObject root = document.object();
+    QCOMPARE(root.value(QStringLiteral("status")).toString(), QStringLiteral("completed"));
+    QCOMPARE(root.value(QStringLiteral("moveFormat")).toString(), QStringLiteral("uci"));
+
+    const QJsonObject tournament = root.value(QStringLiteral("tournament")).toObject();
+    const QJsonObject gameSettings = tournament.value(QStringLiteral("game")).toObject();
+    QCOMPARE(gameSettings.value(QStringLiteral("baseTimeSeconds")).toInt(),
+             tournamentConfig(QString::fromLatin1(kMateInOneFen), 1)
+                 .match.game.baseTimeSeconds);
+
+    const QJsonObject summary = root.value(QStringLiteral("summary")).toObject();
+    QCOMPARE(summary.value(QStringLiteral("completedGames")).toInt(), 1);
+    QCOMPARE(summary.value(QStringLiteral("whiteWins")).toInt(), 1);
+
+    const QJsonArray games = root.value(QStringLiteral("games")).toArray();
+    QCOMPARE(games.size(), 1);
+    const QJsonObject game = games.at(0).toObject();
+    QCOMPARE(game.value(QStringLiteral("status")).toString(), QStringLiteral("completed"));
+    QCOMPARE(game.value(QStringLiteral("result")).toString(), QStringLiteral("1-0"));
+    QCOMPARE(game.value(QStringLiteral("termination")).toString(), QStringLiteral("checkmate"));
+    QCOMPARE(game.value(QStringLiteral("white")).toObject()
+                 .value(QStringLiteral("name")).toString(),
+             QStringLiteral("Player 1"));
+    QCOMPARE(game.value(QStringLiteral("black")).toObject()
+                 .value(QStringLiteral("name")).toString(),
+             QStringLiteral("Player 2"));
+
+    const QJsonArray moves = game.value(QStringLiteral("moves")).toArray();
+    QCOMPARE(moves.size(), 1);
+    QCOMPARE(moves.at(0).toString(), QStringLiteral("f7g7"));
 }
 
 int main(int argc, char **argv)

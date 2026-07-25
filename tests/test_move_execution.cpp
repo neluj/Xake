@@ -98,6 +98,7 @@ class TestMoveExecution : public QObject
     Q_OBJECT
 
 private slots:
+    void controllerTracksExecutedMoves();
     void moveGenIncludesKnightMovesFromStart();
     void doMoveAppliesLegalGeneratedMove();
     void doMoveRejectsPseudoIllegalPinnedMove();
@@ -113,6 +114,24 @@ private slots:
     void controllerStopsWhenEngineExits();
     void controllerIgnoresDuplicateEngineBestMove();
 };
+
+void TestMoveExecution::controllerTracksExecutedMoves()
+{
+    GameController controller;
+    QSignalSpy moveSpy(&controller, &GameController::movePlayed);
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)), kStartFen));
+
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '7', 'e', '5')));
+
+    QCOMPARE(controller.moveHistoryUci(),
+             QStringList({QStringLiteral("e2e4"), QStringLiteral("e7e5")}));
+    QCOMPARE(moveSpy.count(), 2);
+    QCOMPARE(moveSpy.at(0).at(0).toInt(), 1);
+    QCOMPARE(moveSpy.at(0).at(1).toString(), QStringLiteral("e2e4"));
+    QCOMPARE(moveSpy.at(1).at(0).toInt(), 2);
+    QCOMPARE(moveSpy.at(1).at(1).toString(), QStringLiteral("e7e5"));
+}
 
 void TestMoveExecution::doMoveAppliesLegalGeneratedMove()
 {

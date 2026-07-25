@@ -2,11 +2,133 @@
 
 #include "match_settings_validation.h"
 
+#include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRandomGenerator>
+#include <QSaveFile>
 #include <QTimer>
 
 #include <limits>
 #include <utility>
+
+namespace {
+
+QString currentTimestamp()
+{
+    return QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
+}
+
+QJsonObject playerToJson(const PlayerConfig& player)
+{
+    QJsonObject object;
+    object["type"] = player.type == PlayerType::Engine ? QStringLiteral("engine")
+                                                       : QStringLiteral("human");
+    object["name"] = player.name;
+    object["enginePath"] = player.enginePath;
+    return object;
+}
+
+QJsonObject summaryToJson(const TournamentSummary& summary)
+{
+    QJsonObject object;
+    object["totalGames"] = summary.totalGames;
+    object["completedGames"] = summary.completedGames;
+    object["player1Wins"] = summary.player1Wins;
+    object["player2Wins"] = summary.player2Wins;
+    object["draws"] = summary.draws;
+    object["whiteWins"] = summary.whiteWins;
+    object["blackWins"] = summary.blackWins;
+    return object;
+}
+
+QString resultNotation(GameOutcome outcome)
+{
+    switch (outcome) {
+    case GameOutcome::WhiteWin:
+        return QStringLiteral("1-0");
+    case GameOutcome::BlackWin:
+        return QStringLiteral("0-1");
+    case GameOutcome::Draw:
+        return QStringLiteral("1/2-1/2");
+    }
+
+    return QString();
+}
+
+QString outcomeName(GameOutcome outcome)
+{
+    switch (outcome) {
+    case GameOutcome::WhiteWin:
+        return QStringLiteral("white_win");
+    case GameOutcome::BlackWin:
+        return QStringLiteral("black_win");
+    case GameOutcome::Draw:
+        return QStringLiteral("draw");
+    }
+
+    return QString();
+}
+
+QString terminationName(GameTermination termination)
+{
+    switch (termination) {
+    case GameTermination::Checkmate:
+        return QStringLiteral("checkmate");
+    case GameTermination::Stalemate:
+        return QStringLiteral("stalemate");
+    case GameTermination::FiftyMoveRule:
+        return QStringLiteral("fifty_move_rule");
+    case GameTermination::ThreefoldRepetition:
+        return QStringLiteral("threefold_repetition");
+    case GameTermination::InsufficientMaterial:
+        return QStringLiteral("insufficient_material");
+    case GameTermination::TimeForfeit:
+        return QStringLiteral("time_forfeit");
+    case GameTermination::MoveLimit:
+        return QStringLiteral("move_limit");
+    }
+
+    return QString();
+}
+
+QJsonObject gameRecordToJson(const TournamentGameRecord& record)
+{
+    QJsonObject object;
+    object["gameNumber"] = record.gameNumber;
+    object["status"] = record.completed ? QStringLiteral("completed")
+                                        : record.aborted ? QStringLiteral("aborted")
+                                                         : QStringLiteral("in_progress");
+    object["startedAt"] = record.startedAtIso;
+    if (!record.finishedAtIso.isEmpty()) {
+        object["finishedAt"] = record.finishedAtIso;
+    }
+    object["white"] = playerToJson(record.match.player1);
+    object["black"] = playerToJson(record.match.player2);
+
+    QJsonArray moves;
+    for (const QString& move : record.moves) {
+        moves.append(move);
+    }
+    object["moves"] = moves;
+
+    if (record.completed) {
+        object["result"] = resultNotation(record.result.outcome);
+        object["outcome"] = outcomeName(record.result.outcome);
+        object["termination"] = terminationName(record.result.termination);
+        object["message"] = record.result.message;
+    }
+    if (record.aborted) {
+        object["abortTitle"] = record.abortTitle;
+        object["abortMessage"] = record.abortMessage;
+    }
+    return object;
+}
+
+} // namespace
 
 TournamentRunner::TournamentRunner(GameController *gameController, QObject *parent)
     : QObject(parent)
@@ -18,6 +140,8 @@ TournamentRunner::TournamentRunner(GameController *gameController, QObject *pare
             this, &TournamentRunner::handleGameFinished);
     connect(m_gameController, &GameController::gameAborted,
             this, &TournamentRunner::handleGameAborted);
+    connect(m_gameController, &GameController::movePlayed,
+            this, &TournamentRunner::handleMovePlayed);
 }
 
 bool TournamentRunner::start(const TournamentConfig& config,
@@ -46,11 +170,22 @@ bool TournamentRunner::start(const TournamentConfig& config,
     m_logDir = logDir;
     m_sessionTag = sessionTag;
     m_summary = TournamentSummary{static_cast<int>(totalGames)};
+    m_gameRecords.clear();
+    m_reportFilePath = m_logDir.isEmpty()
+        ? QString()
+        : QDir(m_logDir).filePath(QStringLiteral("tournament_report.json"));
+    m_status = QStringLiteral("in_progress");
+    m_startedAtIso = currentTimestamp();
+    m_finishedAtIso.clear();
+    m_abortTitle.clear();
+    m_abortMessage.clear();
     m_nextGameNumber = 1;
     m_currentGameNumber = 0;
     m_currentColorsSwapped = false;
     m_active = true;
+    m_reportErrorEmitted = false;
 
+    persistReport();
     emit tournamentStarted(m_summary.totalGames);
     startNextGame();
     return true;
@@ -66,6 +201,16 @@ TournamentSummary TournamentRunner::summary() const
     return m_summary;
 }
 
+QVector<TournamentGameRecord> TournamentRunner::gameRecords() const
+{
+    return m_gameRecords;
+}
+
+QString TournamentRunner::reportFilePath() const
+{
+    return m_reportFilePath;
+}
+
 void TournamentRunner::startNextGame()
 {
     if (!m_active) {
@@ -79,6 +224,14 @@ void TournamentRunner::startNextGame()
     m_currentGameNumber = m_nextGameNumber++;
     m_currentColorsSwapped = colorsAreSwappedForCurrentGame();
     const MatchConfig match = matchForCurrentGame();
+
+    TournamentGameRecord record;
+    record.gameNumber = m_currentGameNumber;
+    record.match = match;
+    record.startedAtIso = currentTimestamp();
+    m_gameRecords.append(record);
+    persistReport();
+
     emit tournamentGameStarted(m_currentGameNumber, m_summary.totalGames, match);
 
     const QString gameTag = QStringLiteral("%1_game%2")
@@ -90,15 +243,50 @@ void TournamentRunner::startNextGame()
                                       gameTag,
                                       m_config.maxMoves)) {
         m_active = false;
-        emit tournamentAborted(tr("Tournament error"),
-                               tr("Could not start game %1.").arg(m_currentGameNumber));
+        m_status = QStringLiteral("aborted");
+        m_finishedAtIso = currentTimestamp();
+        m_abortTitle = tr("Tournament error");
+        m_abortMessage = tr("Could not start game %1.").arg(m_currentGameNumber);
+        if (TournamentGameRecord *current = currentGameRecord()) {
+            current->aborted = true;
+            current->finishedAtIso = m_finishedAtIso;
+            current->abortTitle = m_abortTitle;
+            current->abortMessage = m_abortMessage;
+        }
+        persistReport();
+        emit tournamentAborted(m_abortTitle, m_abortMessage);
     }
+}
+
+void TournamentRunner::handleMovePlayed(int ply, const QString& uciMove)
+{
+    if (!m_active || ply <= 0 || uciMove.isEmpty()) {
+        return;
+    }
+
+    TournamentGameRecord *current = currentGameRecord();
+    if (!current) {
+        return;
+    }
+
+    if (ply == current->moves.size() + 1) {
+        current->moves.append(uciMove);
+    } else {
+        current->moves = m_gameController->moveHistoryUci();
+    }
+    persistReport();
 }
 
 void TournamentRunner::handleGameFinished(const GameResult& result)
 {
     if (!m_active || m_currentGameNumber == 0) {
         return;
+    }
+
+    if (TournamentGameRecord *current = currentGameRecord()) {
+        current->completed = true;
+        current->result = result;
+        current->finishedAtIso = currentTimestamp();
     }
 
     ++m_summary.completedGames;
@@ -124,6 +312,7 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
         break;
     }
 
+    persistReport();
     emit tournamentGameFinished(m_currentGameNumber, result);
     QTimer::singleShot(0, this, [this]() {
         startNextGame();
@@ -137,6 +326,17 @@ void TournamentRunner::handleGameAborted(const QString& title, const QString& me
     }
 
     m_active = false;
+    m_status = QStringLiteral("aborted");
+    m_finishedAtIso = currentTimestamp();
+    m_abortTitle = title;
+    m_abortMessage = message;
+    if (TournamentGameRecord *current = currentGameRecord()) {
+        current->aborted = true;
+        current->finishedAtIso = m_finishedAtIso;
+        current->abortTitle = title;
+        current->abortMessage = message;
+    }
+    persistReport();
     emit tournamentAborted(title, message);
 }
 
@@ -165,5 +365,110 @@ void TournamentRunner::finishTournament()
     }
 
     m_active = false;
+    m_status = QStringLiteral("completed");
+    m_finishedAtIso = currentTimestamp();
+    persistReport();
     emit tournamentFinished(m_summary);
+}
+
+TournamentGameRecord* TournamentRunner::currentGameRecord()
+{
+    if (m_gameRecords.isEmpty()
+        || m_gameRecords.constLast().gameNumber != m_currentGameNumber) {
+        return nullptr;
+    }
+    return &m_gameRecords.last();
+}
+
+void TournamentRunner::persistReport()
+{
+    QString error;
+    if (writeReport(&error) || m_reportErrorEmitted) {
+        return;
+    }
+
+    m_reportErrorEmitted = true;
+    emit tournamentReportError(
+        tr("Could not write tournament report '%1': %2")
+            .arg(m_reportFilePath, error));
+}
+
+bool TournamentRunner::writeReport(QString* errorOut) const
+{
+    if (m_reportFilePath.isEmpty()) {
+        return true;
+    }
+
+    const QFileInfo reportInfo(m_reportFilePath);
+    if (!QDir().mkpath(reportInfo.absolutePath())) {
+        if (errorOut) {
+            *errorOut = tr("Could not create the report directory.");
+        }
+        return false;
+    }
+
+    QJsonObject tournament;
+    tournament["type"] = m_config.tournamentType;
+    tournament["rounds"] = m_config.rounds;
+    tournament["gamesPerPairing"] = m_config.gamesPerPairing;
+    tournament["maxMoves"] = m_config.maxMoves;
+    tournament["randomizeColors"] = m_config.randomizeColors;
+    tournament["player1"] = playerToJson(m_config.match.player1);
+    tournament["player2"] = playerToJson(m_config.match.player2);
+
+    QJsonObject gameSettings;
+    gameSettings["timeControl"] = m_config.match.game.timeControl;
+    gameSettings["baseTimeSeconds"] = m_config.match.game.baseTimeSeconds;
+    gameSettings["incrementSeconds"] = m_config.match.game.incrementSeconds;
+    gameSettings["movesToGo"] = m_config.match.game.movesToGo;
+    tournament["game"] = gameSettings;
+
+    QJsonArray games;
+    for (const TournamentGameRecord& record : m_gameRecords) {
+        games.append(gameRecordToJson(record));
+    }
+
+    QJsonObject root;
+    root["sessionTag"] = m_sessionTag;
+    root["status"] = m_status;
+    root["startedAt"] = m_startedAtIso;
+    root["updatedAt"] = currentTimestamp();
+    if (!m_finishedAtIso.isEmpty()) {
+        root["finishedAt"] = m_finishedAtIso;
+    }
+    root["startFen"] = QString::fromStdString(m_startFen);
+    root["moveFormat"] = QStringLiteral("uci");
+    root["tournament"] = tournament;
+    root["summary"] = summaryToJson(m_summary);
+    root["games"] = games;
+    if (!m_abortMessage.isEmpty()) {
+        QJsonObject abort;
+        abort["title"] = m_abortTitle;
+        abort["message"] = m_abortMessage;
+        root["abort"] = abort;
+    }
+
+    QSaveFile file(m_reportFilePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if (errorOut) {
+            *errorOut = file.errorString();
+        }
+        return false;
+    }
+
+    const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    if (file.write(json) != json.size()) {
+        if (errorOut) {
+            *errorOut = file.errorString();
+        }
+        file.cancelWriting();
+        return false;
+    }
+    if (!file.commit()) {
+        if (errorOut) {
+            *errorOut = file.errorString();
+        }
+        return false;
+    }
+    return true;
 }

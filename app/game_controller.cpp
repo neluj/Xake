@@ -240,6 +240,11 @@ Xake::Position GameController::currentPosition() const
     return m_position;
 }
 
+QStringList GameController::moveHistoryUci() const
+{
+    return m_uciMoves;
+}
+
 bool GameController::timeControlEnabled() const
 {
     return m_timeControlEnabled;
@@ -615,6 +620,7 @@ void GameController::afterMoveApplied(Move move)
 
     m_uciMoves.append(uci.toLower());
     m_moveHistory.append(move);
+    emit movePlayed(m_uciMoves.size(), m_uciMoves.constLast());
     emit positionChanged(m_position);
 
     if (finishGameIfNoLegalMoves()) {

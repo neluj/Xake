@@ -32,6 +32,8 @@ private:
     void setTournamentTabActive(bool active);
     void resetTournamentPanel(int totalGames);
     void updateTournamentScore(const TournamentSummary& summary);
+    void updateTournamentHistory();
+    void updateGameMoveList();
     void updatePlayerNames(const MatchConfig& match);
     void updateClockUi();
     void updateSideToMoveLabel(const Xake::Position& position);
