@@ -33,6 +33,9 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
     enum class SessionKind {
         None,
@@ -81,6 +84,7 @@ private:
     GameController *m_gameController;
     TournamentRunner *m_tournamentRunner;
     QTimer *m_clockUiTimer = nullptr;
+    QTimer *m_gameMovesLayoutTimer = nullptr;
     QPointer<QDialog> m_debugDialog;
     QPointer<QLabel> m_debugPathLabel;
     QPointer<QPlainTextEdit> m_debugText;

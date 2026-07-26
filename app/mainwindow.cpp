@@ -17,6 +17,7 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDir>
+#include <QEvent>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QHeaderView>
@@ -108,6 +109,20 @@ void configureMoveList(QPlainTextEdit *editor)
     editor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     editor->setStyleSheet(
         QStringLiteral("QPlainTextEdit { background: transparent; border: none; padding: 0px; }"));
+}
+
+void configureColumnMoveList(QPlainTextEdit *editor)
+{
+    configureMoveList(editor);
+    if (!editor) {
+        return;
+    }
+
+    editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    editor->setLineWrapMode(QPlainTextEdit::NoWrap);
+    editor->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    editor->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    editor->document()->setDocumentMargin(2.0);
 }
 
 void configureEngineOutput(QPlainTextEdit *editor)
@@ -235,6 +250,79 @@ void appendFormattedMoves(QTextCursor& cursor,
         cursor.insertText(moves.at(index),
                           moveTextFormat(index < openingCount));
     }
+}
+
+void renderGameMovesInColumns(QPlainTextEdit *editor,
+                              const QStringList& moves,
+                              int openingMoveCount)
+{
+    if (!editor) {
+        return;
+    }
+
+    editor->clear();
+    if (moves.isEmpty()) {
+        return;
+    }
+
+    constexpr int kMoveColumnCharacters = 23;
+    const int lineHeight = qMax(1, editor->fontMetrics().lineSpacing());
+    const int availableHeight = qMax(1, editor->viewport()->height() - 4);
+    const int rowsPerColumn = qMax(1, availableHeight / lineHeight);
+    const int turnCount = (static_cast<int>(moves.size()) + 1) / 2;
+    const int columnCount =
+        (turnCount + rowsPerColumn - 1) / rowsPerColumn;
+    const int displayedRows = qMin(rowsPerColumn, turnCount);
+    const int openingCount =
+        qBound(0, openingMoveCount, static_cast<int>(moves.size()));
+
+    QTextCursor cursor(editor->document());
+    const QTextCharFormat neutralFormat;
+    for (int row = 0; row < displayedRows; ++row) {
+        for (int column = 0; column < columnCount; ++column) {
+            const int turn = column * rowsPerColumn + row;
+            if (turn >= turnCount) {
+                break;
+            }
+
+            const int whitePly = turn * 2;
+            const int blackPly = whitePly + 1;
+            const QString number = QStringLiteral("%1. ").arg(turn + 1);
+            const QString whiteMove = moves.at(whitePly);
+            const QString blackMove =
+                blackPly < moves.size() ? moves.at(blackPly) : QString();
+
+            cursor.insertText(number, neutralFormat);
+            cursor.insertText(whiteMove,
+                              moveTextFormat(whitePly < openingCount));
+            int usedCharacters = number.size() + whiteMove.size();
+            if (!blackMove.isEmpty()) {
+                cursor.insertText(QStringLiteral("   "), neutralFormat);
+                cursor.insertText(blackMove,
+                                  moveTextFormat(blackPly < openingCount));
+                usedCharacters += 3 + blackMove.size();
+            }
+
+            const bool hasNextColumn =
+                (column + 1) * rowsPerColumn + row < turnCount;
+            if (hasNextColumn) {
+                const int padding =
+                    qMax(4, kMoveColumnCharacters - usedCharacters);
+                cursor.insertText(QString(padding, QLatin1Char(' ')),
+                                  neutralFormat);
+            }
+        }
+        if (row + 1 < displayedRows) {
+            cursor.insertBlock();
+        }
+    }
+
+    cursor.movePosition(QTextCursor::Start);
+    editor->setTextCursor(cursor);
+    editor->verticalScrollBar()->setValue(
+        editor->verticalScrollBar()->minimum());
+    editor->horizontalScrollBar()->setValue(
+        editor->horizontalScrollBar()->maximum());
 }
 
 QString readableHistoryValue(QString value)
@@ -758,12 +846,13 @@ MainWindow::MainWindow(QWidget *parent)
     , m_gameController(new GameController(this))
     , m_tournamentRunner(new TournamentRunner(m_gameController, this))
     , m_clockUiTimer(new QTimer(this))
+    , m_gameMovesLayoutTimer(new QTimer(this))
 {
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
     setColorIndicator(ui->labelWhiteTime, WHITE);
     setColorIndicator(ui->labelBlackTime, BLACK);
-    configureMoveList(ui->gameMovesText);
+    configureColumnMoveList(ui->gameMovesText);
     configureMoveList(ui->tournamentHistoryText);
     configureMoveList(ui->historyDetailsText);
     configureMoveLegend(ui->labelGameMoveLegend);
@@ -822,6 +911,13 @@ MainWindow::MainWindow(QWidget *parent)
         connect(m_clockUiTimer, &QTimer::timeout, this, [this]() {
             updateClockUi();
         });
+    }
+    if (m_gameMovesLayoutTimer) {
+        m_gameMovesLayoutTimer->setSingleShot(true);
+        m_gameMovesLayoutTimer->setInterval(0);
+        connect(m_gameMovesLayoutTimer, &QTimer::timeout,
+                this, &MainWindow::updateGameMoveList);
+        ui->gameMovesText->viewport()->installEventFilter(this);
     }
 
     if (ui->actionSingleGame) {
@@ -1108,6 +1204,17 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (ui && ui->gameMovesText
+        && watched == ui->gameMovesText->viewport()
+        && event->type() == QEvent::Resize
+        && m_gameMovesLayoutTimer) {
+        m_gameMovesLayoutTimer->start();
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* tournament)
@@ -1542,14 +1649,9 @@ void MainWindow::updateGameMoveList()
         return;
     }
 
-    ui->gameMovesText->clear();
-    QTextCursor cursor(ui->gameMovesText->document());
-    appendFormattedMoves(cursor,
-                         m_gameController->moveHistoryUci(),
-                         m_gameController->initialMoveCount(),
-                         true);
-    ui->gameMovesText->setTextCursor(cursor);
-    ui->gameMovesText->ensureCursorVisible();
+    renderGameMovesInColumns(ui->gameMovesText,
+                             m_gameController->moveHistoryUci(),
+                             m_gameController->initialMoveCount());
 }
 
 void MainWindow::refreshHistory()
