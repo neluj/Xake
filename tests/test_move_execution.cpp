@@ -119,6 +119,8 @@ private slots:
     void controllerWritesUnifiedEngineCommunicationLog();
     void controllerAnnouncesEachEngineSearch();
     void controllerStartsAfterOpeningMoves();
+    void controllerPauseFreezesClockAndRejectsMoves();
+    void controllerDiscardsBestMoveFromPausedSearch();
 };
 
 void TestMoveExecution::controllerTracksExecutedMoves()
@@ -484,6 +486,60 @@ void TestMoveExecution::controllerStartsAfterOpeningMoves()
     QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
              QStringLiteral(
                  "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2"));
+}
+
+void TestMoveExecution::controllerPauseFreezesClockAndRejectsMoves()
+{
+    GameController controller;
+    QSignalSpy pauseSpy(&controller, &GameController::pauseChanged);
+    QVERIFY(controller.startMatch(timedHumanVsHumanConfig(
+                                      QString::fromLatin1(kStartFen), 2),
+                                  kStartFen));
+
+    QTest::qWait(30);
+    QVERIFY(controller.pauseMatch());
+    QVERIFY(controller.isPaused());
+    const qint64 pausedTime = controller.remainingTimeMs(WHITE);
+
+    QTest::qWait(50);
+    QCOMPARE(controller.remainingTimeMs(WHITE), pausedTime);
+    QVERIFY(!controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             QString::fromLatin1(kStartFen));
+
+    QVERIFY(controller.resumeMatch());
+    QVERIFY(!controller.isPaused());
+    QTest::qWait(30);
+    QVERIFY(controller.remainingTimeMs(WHITE) < pausedTime);
+    QCOMPARE(pauseSpy.count(), 2);
+}
+
+void TestMoveExecution::controllerDiscardsBestMoveFromPausedSearch()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(
+                                      QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+
+    controller.m_config.player1.type = PlayerType::Engine;
+    controller.m_whiteSession.active = true;
+    controller.m_whiteSession.readyOk = true;
+    controller.m_whiteSession.searching = true;
+
+    QVERIFY(controller.pauseMatch());
+    QVERIFY(controller.m_whiteSession.discardBestMove);
+    QVERIFY(controller.resumeMatch());
+
+    controller.handleBestMove(EngineSide::White, QStringLiteral("e2e4"));
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             QString::fromLatin1(kStartFen));
+    QVERIFY(controller.m_whiteSession.searching);
+    QVERIFY(!controller.m_whiteSession.discardBestMove);
+
+    controller.handleBestMove(EngineSide::White, QStringLiteral("e2e4"));
+    QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
+             QStringLiteral(
+                 "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"));
 }
 
 int main(int argc, char **argv)

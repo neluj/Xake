@@ -57,7 +57,7 @@ QJsonObject tournamentToJson(const TournamentConfig& tournament)
 
 QString sessionTagNow()
 {
-    return QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    return QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz");
 }
 
 QString defaultSessionDir(const QString& sessionTag, const QString& sessionType)

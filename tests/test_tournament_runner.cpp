@@ -61,6 +61,7 @@ private slots:
     void drawsAtTournamentMoveLimit();
     void writesTournamentReportWithMoves();
     void reusesEachOpeningWithBothColors();
+    void pausesResumesAndStopsTournament();
 };
 
 void TestTournamentRunner::playsAllGamesAndAlternatesColors()
@@ -254,6 +255,46 @@ void TestTournamentRunner::reusesEachOpeningWithBothColors()
     QCOMPARE(records.at(1).openingIndex, 11);
     QCOMPARE(records.at(2).openingIndex, 22);
     QCOMPARE(records.at(3).openingIndex, 22);
+}
+
+void TestTournamentRunner::pausesResumesAndStopsTournament()
+{
+    GameController controller;
+    TournamentRunner runner(&controller);
+    QSignalSpy pauseSpy(&runner, &TournamentRunner::pauseChanged);
+    QSignalSpy abortedSpy(&runner, &TournamentRunner::tournamentAborted);
+
+    QVERIFY(runner.start(tournamentConfig(QString::fromLatin1(kStartFen), 2),
+                         singleOpening(QString::fromLatin1(kStartFen)),
+                         QString(),
+                         QStringLiteral("pause_stop")));
+    QVERIFY(runner.isActive());
+    QVERIFY(controller.isActive());
+
+    QVERIFY(runner.pause());
+    QVERIFY(runner.isPaused());
+    QVERIFY(controller.isPaused());
+    QVERIFY(!controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+
+    QVERIFY(runner.resume());
+    QVERIFY(!runner.isPaused());
+    QVERIFY(!controller.isPaused());
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+
+    QVERIFY(runner.pause());
+    QVERIFY(runner.stop());
+    QVERIFY(!runner.isActive());
+    QVERIFY(!runner.isPaused());
+    QVERIFY(!controller.isActive());
+    QCOMPARE(pauseSpy.count(), 4);
+    QCOMPARE(abortedSpy.count(), 1);
+
+    const QVector<TournamentGameRecord> records = runner.gameRecords();
+    QCOMPARE(records.size(), 1);
+    QVERIFY(records.constLast().aborted);
+    QCOMPARE(records.constLast().moves, QStringList({QStringLiteral("e2e4")}));
+    QCOMPARE(records.constLast().abortTitle,
+             QStringLiteral("Tournament stopped"));
 }
 
 int main(int argc, char **argv)

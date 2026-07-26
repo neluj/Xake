@@ -195,7 +195,10 @@ bool TournamentRunner::start(const TournamentConfig& config,
     m_currentGameNumber = 0;
     m_currentColorsSwapped = false;
     m_active = true;
+    m_paused = false;
+    m_waitingForNextGame = false;
     m_reportErrorEmitted = false;
+    ++m_runGeneration;
 
     persistReport();
     emit tournamentStarted(m_summary.totalGames);
@@ -203,9 +206,83 @@ bool TournamentRunner::start(const TournamentConfig& config,
     return true;
 }
 
+bool TournamentRunner::pause()
+{
+    if (!m_active || m_paused) {
+        return false;
+    }
+
+    m_paused = true;
+    m_status = QStringLiteral("paused");
+    if (m_gameController->isActive()) {
+        m_gameController->pauseMatch();
+    }
+    persistReport();
+    emit pauseChanged(true);
+    return true;
+}
+
+bool TournamentRunner::resume()
+{
+    if (!m_active || !m_paused) {
+        return false;
+    }
+
+    m_paused = false;
+    m_status = QStringLiteral("in_progress");
+    if (m_gameController->isActive()) {
+        m_gameController->resumeMatch();
+    } else if (m_waitingForNextGame) {
+        m_waitingForNextGame = false;
+        startNextGame();
+    }
+    persistReport();
+    emit pauseChanged(false);
+    return true;
+}
+
+bool TournamentRunner::stop()
+{
+    if (!m_active) {
+        return false;
+    }
+
+    const bool wasPaused = m_paused;
+    m_active = false;
+    m_paused = false;
+    m_waitingForNextGame = false;
+    ++m_runGeneration;
+    m_status = QStringLiteral("aborted");
+    m_finishedAtIso = currentTimestamp();
+    m_abortTitle = tr("Tournament stopped");
+    m_abortMessage = tr("Tournament stopped by user.");
+
+    if (TournamentGameRecord *current = currentGameRecord();
+        current && !current->completed) {
+        current->moves = m_gameController->moveHistoryUci();
+        current->aborted = true;
+        current->finishedAtIso = m_finishedAtIso;
+        current->abortTitle = m_abortTitle;
+        current->abortMessage = m_abortMessage;
+    }
+
+    m_gameController->stopMatch();
+    persistReport();
+    if (wasPaused) {
+        emit pauseChanged(false);
+    }
+    emit tournamentAborted(m_abortTitle, m_abortMessage);
+    return true;
+}
+
 bool TournamentRunner::isActive() const
 {
     return m_active;
+}
+
+bool TournamentRunner::isPaused() const
+{
+    return m_paused;
 }
 
 TournamentSummary TournamentRunner::summary() const
@@ -230,7 +307,7 @@ int TournamentRunner::openingCount() const
 
 void TournamentRunner::startNextGame()
 {
-    if (!m_active) {
+    if (!m_active || m_paused) {
         return;
     }
     if (m_nextGameNumber > m_summary.totalGames) {
@@ -339,7 +416,13 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
 
     persistReport();
     emit tournamentGameFinished(m_currentGameNumber, result);
-    QTimer::singleShot(0, this, [this]() {
+    m_waitingForNextGame = true;
+    const quint64 runGeneration = m_runGeneration;
+    QTimer::singleShot(0, this, [this, runGeneration]() {
+        if (!m_active || m_paused || runGeneration != m_runGeneration) {
+            return;
+        }
+        m_waitingForNextGame = false;
         startNextGame();
     });
 }
@@ -350,7 +433,11 @@ void TournamentRunner::handleGameAborted(const QString& title, const QString& me
         return;
     }
 
+    const bool wasPaused = m_paused;
     m_active = false;
+    m_paused = false;
+    m_waitingForNextGame = false;
+    ++m_runGeneration;
     m_status = QStringLiteral("aborted");
     m_finishedAtIso = currentTimestamp();
     m_abortTitle = title;
@@ -362,6 +449,9 @@ void TournamentRunner::handleGameAborted(const QString& title, const QString& me
         current->abortMessage = message;
     }
     persistReport();
+    if (wasPaused) {
+        emit pauseChanged(false);
+    }
     emit tournamentAborted(title, message);
 }
 
@@ -400,10 +490,17 @@ void TournamentRunner::finishTournament()
         return;
     }
 
+    const bool wasPaused = m_paused;
     m_active = false;
+    m_paused = false;
+    m_waitingForNextGame = false;
+    ++m_runGeneration;
     m_status = QStringLiteral("completed");
     m_finishedAtIso = currentTimestamp();
     persistReport();
+    if (wasPaused) {
+        emit pauseChanged(false);
+    }
     emit tournamentFinished(m_summary);
 }
 

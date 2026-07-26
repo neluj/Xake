@@ -24,6 +24,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QString>
+#include <QStyle>
 #include <QSvgRenderer>
 #include <QTextCharFormat>
 #include <QTextCursor>
@@ -453,10 +454,19 @@ MainWindow::MainWindow(QWidget *parent)
     configureEngineOutput(ui->whiteEngineOutputText);
     configureEngineOutput(ui->blackEngineOutputText);
     setTournamentTabActive(false);
+    ui->pauseButton->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
+    ui->stopButton->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    ui->restartButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
 
     connect(ui->debugButton, &QPushButton::clicked, this, [this]() {
         openDebugWindow();
     });
+    connect(ui->pauseButton, &QPushButton::clicked,
+            this, &MainWindow::togglePause);
+    connect(ui->stopButton, &QPushButton::clicked,
+            this, &MainWindow::stopCurrentSession);
+    connect(ui->restartButton, &QPushButton::clicked,
+            this, &MainWindow::restartLastSession);
 
     if (m_clockUiTimer) {
         m_clockUiTimer->setInterval(100);
@@ -561,6 +571,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_clockUiTimer) {
             m_clockUiTimer->start();
         }
+        updateSessionControls();
     });
 
     connect(m_gameController, &GameController::matchStopped, this, [this]() {
@@ -568,6 +579,20 @@ MainWindow::MainWindow(QWidget *parent)
             m_clockUiTimer->stop();
         }
         updateClockUi();
+        updateSessionControls();
+    });
+
+    connect(m_gameController, &GameController::pauseChanged, this,
+            [this](bool paused) {
+        if (m_clockUiTimer) {
+            if (paused || !m_gameController->isActive()) {
+                m_clockUiTimer->stop();
+            } else {
+                m_clockUiTimer->start();
+            }
+        }
+        updateClockUi();
+        updateSessionControls();
     });
 
     connect(m_gameController, &GameController::errorOccurred, this,
@@ -588,6 +613,7 @@ MainWindow::MainWindow(QWidget *parent)
             [this](int totalGames) {
         setTournamentTabActive(true);
         resetTournamentPanel(totalGames);
+        updateSessionControls();
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentGameStarted, this,
@@ -641,19 +667,44 @@ MainWindow::MainWindow(QWidget *parent)
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(message);
         }
+        updateSessionControls();
         QMessageBox::information(this, tr("Tournament finished"), message);
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentAborted, this,
             [this](const QString& title, const QString& message) {
         if (ui && ui->labelTournamentStatus) {
-            ui->labelTournamentStatus->setText(tr("Tournament aborted"));
+            ui->labelTournamentStatus->setText(title);
         }
         updateTournamentHistory();
         updateTournamentStandings();
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(tr("%1: %2").arg(title, message));
         }
+        updateSessionControls();
+    });
+
+    connect(m_tournamentRunner, &TournamentRunner::pauseChanged, this,
+            [this](bool paused) {
+        if (ui && ui->labelTournamentStatus) {
+            if (paused) {
+                ui->labelTournamentStatus->setText(tr("Tournament paused"));
+            } else if (m_tournamentRunner->isActive()) {
+                const QVector<TournamentGameRecord> records =
+                    m_tournamentRunner->gameRecords();
+                if (!records.isEmpty() && !records.constLast().completed) {
+                    ui->labelTournamentStatus->setText(
+                        tr("Game %1 of %2")
+                            .arg(records.constLast().gameNumber)
+                            .arg(m_tournamentRunner->summary().totalGames));
+                }
+            }
+        }
+        if (ui && ui->statusbar) {
+            ui->statusbar->showMessage(
+                paused ? tr("Tournament paused.") : tr("Tournament resumed."));
+        }
+        updateSessionControls();
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentReportError, this,
@@ -679,6 +730,7 @@ MainWindow::MainWindow(QWidget *parent)
         ui->labelBlackPlayer->clear();
     }
     updateGameMoveList();
+    updateSessionControls();
 }
 
 MainWindow::~MainWindow()
@@ -752,7 +804,13 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
     }
 
     if (tournament) {
-        return m_tournamentRunner->start(*tournament, openings, sessionDir, sessionTag);
+        const bool started =
+            m_tournamentRunner->start(*tournament, openings, sessionDir, sessionTag);
+        if (started) {
+            m_lastSessionKind = SessionKind::Tournament;
+            updateSessionControls();
+        }
+        return started;
     }
 
     MatchConfig runtimeConfig = config;
@@ -767,10 +825,124 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
                                                       0,
                                                       firstOpening.movesUci);
     if (started) {
+        m_lastSessionKind = SessionKind::Match;
         clearTournamentPanel();
         setTournamentTabActive(false);
+        updateSessionControls();
     }
     return started;
+}
+
+void MainWindow::togglePause()
+{
+    bool changed = false;
+    bool paused = false;
+    if (m_tournamentRunner && m_tournamentRunner->isActive()) {
+        paused = !m_tournamentRunner->isPaused();
+        changed = paused ? m_tournamentRunner->pause()
+                         : m_tournamentRunner->resume();
+    } else if (m_gameController && m_gameController->isActive()) {
+        paused = !m_gameController->isPaused();
+        changed = paused ? m_gameController->pauseMatch()
+                         : m_gameController->resumeMatch();
+        if (changed && ui && ui->statusbar) {
+            ui->statusbar->showMessage(
+                paused ? tr("Game paused.") : tr("Game resumed."));
+        }
+    }
+
+    if (changed) {
+        updateClockUi();
+    }
+    updateSessionControls();
+}
+
+void MainWindow::stopCurrentSession()
+{
+    const bool tournamentActive =
+        m_tournamentRunner && m_tournamentRunner->isActive();
+    const bool gameActive = m_gameController && m_gameController->isActive();
+    if (!tournamentActive && !gameActive) {
+        return;
+    }
+
+    const QString sessionName = tournamentActive ? tr("tournament") : tr("game");
+    const QMessageBox::StandardButton answer = QMessageBox::question(
+        this,
+        tr("Stop %1").arg(sessionName),
+        tr("Are you sure you want to stop the current %1?").arg(sessionName),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+
+    if (tournamentActive) {
+        m_tournamentRunner->stop();
+    } else {
+        m_gameController->stopMatch();
+        if (ui && ui->statusbar) {
+            ui->statusbar->showMessage(tr("Game stopped."));
+        }
+    }
+    updateSessionControls();
+}
+
+void MainWindow::restartLastSession()
+{
+    const SessionKind sessionKind = m_lastSessionKind;
+    if (sessionKind == SessionKind::None) {
+        return;
+    }
+
+    const QString sessionName = sessionKind == SessionKind::Tournament
+        ? tr("tournament")
+        : tr("game");
+    const QMessageBox::StandardButton answer = QMessageBox::question(
+        this,
+        tr("Restart %1").arg(sessionName),
+        tr("Are you sure you want to restart the %1 from the beginning?")
+            .arg(sessionName),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+
+    if (m_tournamentRunner && m_tournamentRunner->isActive()) {
+        m_tournamentRunner->stop();
+    } else if (m_gameController && m_gameController->isActive()) {
+        m_gameController->stopMatch();
+    }
+
+    if (sessionKind == SessionKind::Tournament && m_state.hasLastTournament) {
+        startMatch(m_state.lastTournament.match, &m_state.lastTournament);
+    } else if (sessionKind == SessionKind::Match && m_state.hasLastMatch) {
+        startMatch(m_state.lastMatch, nullptr);
+    }
+}
+
+void MainWindow::updateSessionControls()
+{
+    if (!ui || !ui->pauseButton || !ui->stopButton || !ui->restartButton) {
+        return;
+    }
+
+    const bool tournamentActive =
+        m_tournamentRunner && m_tournamentRunner->isActive();
+    const bool gameActive = m_gameController && m_gameController->isActive();
+    const bool active = tournamentActive || gameActive;
+    const bool paused = tournamentActive
+        ? m_tournamentRunner->isPaused()
+        : gameActive && m_gameController->isPaused();
+
+    ui->pauseButton->setEnabled(active);
+    ui->pauseButton->setText(paused ? tr("Resume") : tr("Pause"));
+    ui->pauseButton->setIcon(
+        style()->standardIcon(paused ? QStyle::SP_MediaPlay
+                                    : QStyle::SP_MediaPause));
+    ui->stopButton->setEnabled(active);
+    ui->restartButton->setEnabled(m_lastSessionKind != SessionKind::None);
 }
 
 void MainWindow::setTournamentTabActive(bool active)

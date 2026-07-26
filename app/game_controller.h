@@ -29,6 +29,7 @@ struct EngineSession {
     bool uciOk = false;
     bool readyOk = false;
     bool searching = false;
+    bool discardBestMove = false;
     QString lastErrorLine;
 };
 
@@ -72,9 +73,12 @@ public:
                     int maxFullMoves = 0,
                     const QStringList& initialMoves = {});
     void stopMatch();
+    bool pauseMatch();
+    bool resumeMatch();
     bool applyHumanMove(Xake::Move move);
 
     bool isActive() const;
+    bool isPaused() const;
     MatchConfig matchConfig() const;
     Xake::Position currentPosition() const;
     QStringList moveHistoryUci() const;
@@ -89,6 +93,7 @@ signals:
     void movePlayed(int ply, const QString& uciMove);
     void matchStarted(const MatchConfig& config);
     void matchStopped();
+    void pauseChanged(bool paused);
     void gameFinished(const GameResult& result);
     void gameAborted(const QString& title, const QString& message);
     void errorOccurred(const QString& title, const QString& message);
@@ -141,6 +146,7 @@ private:
     EngineSession& sessionForSide(EngineSide side);
 
     bool m_active = false;
+    bool m_paused = false;
     MatchConfig m_config;
     Xake::Position m_position;
     EngineSession m_whiteSession;

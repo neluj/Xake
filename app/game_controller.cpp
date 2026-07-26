@@ -157,6 +157,7 @@ bool GameController::startMatch(const MatchConfig& config,
     m_uciMoves.clear();
     m_moveHistory.clear();
     m_initialMoveCount = 0;
+    m_paused = false;
     if (m_flagTimer) {
         m_flagTimer->stop();
     }
@@ -244,12 +245,52 @@ void GameController::stopMatch()
     m_active = false;
     stopEngines();
     m_timerRunning = false;
+    const bool wasPaused = m_paused;
+    m_paused = false;
+    if (wasPaused) {
+        emit pauseChanged(false);
+    }
     emit matchStopped();
+}
+
+bool GameController::pauseMatch()
+{
+    if (!m_active || m_paused) {
+        return false;
+    }
+
+    m_paused = true;
+    stopSideTimer(m_position.get_side_to_move());
+
+    const auto stopSearch = [](EngineSession& session) {
+        if (!session.active || !session.searching || !session.client) {
+            return;
+        }
+        session.discardBestMove = true;
+        session.client->sendStop();
+    };
+    stopSearch(m_whiteSession);
+    stopSearch(m_blackSession);
+
+    emit pauseChanged(true);
+    return true;
+}
+
+bool GameController::resumeMatch()
+{
+    if (!m_active || !m_paused) {
+        return false;
+    }
+
+    m_paused = false;
+    emit pauseChanged(false);
+    startTurnIfReady();
+    return true;
 }
 
 bool GameController::applyHumanMove(Move move)
 {
-    if (!m_active) {
+    if (!m_active || m_paused) {
         return false;
     }
     if (finishGameIfTimeExpired()) {
@@ -275,6 +316,11 @@ bool GameController::applyHumanMove(Move move)
 bool GameController::isActive() const
 {
     return m_active;
+}
+
+bool GameController::isPaused() const
+{
+    return m_paused;
 }
 
 MatchConfig GameController::matchConfig() const
@@ -334,6 +380,7 @@ bool GameController::startEngineForPlayer(EngineSession& session,
     session.uciOk = false;
     session.readyOk = false;
     session.searching = false;
+    session.discardBestMove = false;
     session.lastErrorLine.clear();
 
     session.client->disableLogging();
@@ -362,6 +409,7 @@ void GameController::stopEngines()
         m_whiteSession.uciOk = false;
         m_whiteSession.readyOk = false;
         m_whiteSession.searching = false;
+        m_whiteSession.discardBestMove = false;
         m_whiteSession.lastErrorLine.clear();
         m_whiteSession.client->sendStop();
         m_whiteSession.client->sendQuit();
@@ -372,6 +420,7 @@ void GameController::stopEngines()
         m_blackSession.uciOk = false;
         m_blackSession.readyOk = false;
         m_blackSession.searching = false;
+        m_blackSession.discardBestMove = false;
         m_blackSession.lastErrorLine.clear();
         m_blackSession.client->sendStop();
         m_blackSession.client->sendQuit();
@@ -665,6 +714,7 @@ void GameController::handleEngineExited(EngineSide side, int exitCode, QProcess:
     session.uciOk = false;
     session.readyOk = false;
     session.searching = false;
+    session.discardBestMove = false;
 
     if (!m_active) {
         session.lastErrorLine.clear();
@@ -702,6 +752,17 @@ void GameController::handleBestMove(EngineSide side, const QString& move)
         return;
     }
     session.searching = false;
+
+    if (session.discardBestMove) {
+        session.discardBestMove = false;
+        if (!m_paused) {
+            startTurnIfReady();
+        }
+        return;
+    }
+    if (m_paused) {
+        return;
+    }
 
     const Color engineColor = side == EngineSide::White ? WHITE : BLACK;
     if (m_position.get_side_to_move() != engineColor) {
@@ -741,7 +802,11 @@ void GameController::sendPositionToEngine(EngineSession& session)
 void GameController::sendGoForSide(EngineSide side)
 {
     EngineSession& session = sessionForSide(side);
-    if (!session.active || !session.readyOk || session.searching || !session.client) {
+    if (m_paused
+        || !session.active
+        || !session.readyOk
+        || session.searching
+        || !session.client) {
         return;
     }
     if ((side == EngineSide::White && m_position.get_side_to_move() != WHITE)
@@ -916,7 +981,7 @@ bool GameController::finishGameIfNoLegalMoves()
 
 void GameController::startSideTimer(Color side)
 {
-    if (!m_timeControlEnabled) {
+    if (!m_timeControlEnabled || m_paused) {
         return;
     }
 
@@ -965,6 +1030,10 @@ void GameController::handleTurnTimeout()
 
 void GameController::startTurnIfReady()
 {
+    if (!m_active || m_paused) {
+        return;
+    }
+
     const Color sideToMove = m_position.get_side_to_move();
     if (sideToMove == WHITE) {
         if (m_config.player1.type == PlayerType::Engine) {

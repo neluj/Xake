@@ -31,8 +31,18 @@ public:
     ~MainWindow();
 
 private:
+    enum class SessionKind {
+        None,
+        Match,
+        Tournament
+    };
+
     void configureEngine();
     bool startMatch(const MatchConfig& config, const TournamentConfig* tournament);
+    void togglePause();
+    void stopCurrentSession();
+    void restartLastSession();
+    void updateSessionControls();
     void setTournamentTabActive(bool active);
     void clearTournamentPanel();
     void resetTournamentPanel(int totalGames);
@@ -53,6 +63,7 @@ private:
     QString m_currentOpeningName;
     int m_currentOpeningIndex = 0;
     int m_currentOpeningCount = 0;
+    SessionKind m_lastSessionKind = SessionKind::None;
     AppState m_state;
     GameController *m_gameController;
     TournamentRunner *m_tournamentRunner;

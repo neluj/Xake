@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QtGlobal>
 #include <QVector>
 
 #include <string>
@@ -52,7 +53,11 @@ public:
                const QVector<OpeningEntry>& openings,
                const QString& logDir,
                const QString& sessionTag);
+    bool pause();
+    bool resume();
+    bool stop();
     bool isActive() const;
+    bool isPaused() const;
     TournamentSummary summary() const;
     QVector<TournamentGameRecord> gameRecords() const;
     QString reportFilePath() const;
@@ -64,6 +69,7 @@ signals:
     void tournamentGameFinished(int gameNumber, const GameResult& result);
     void tournamentFinished(const TournamentSummary& summary);
     void tournamentAborted(const QString& title, const QString& message);
+    void pauseChanged(bool paused);
     void tournamentReportError(const QString& message);
 
 private:
@@ -96,5 +102,8 @@ private:
     int m_currentGameNumber = 0;
     bool m_currentColorsSwapped = false;
     bool m_active = false;
+    bool m_paused = false;
+    bool m_waitingForNextGame = false;
     bool m_reportErrorEmitted = false;
+    quint64 m_runGeneration = 0;
 };
