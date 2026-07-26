@@ -2,6 +2,7 @@
 #include "./ui_mainwindow.h"
 
 #include "single_game_dialog.h"
+#include "history_repository.h"
 #include "opening_book.h"
 #include "pgn_export.h"
 #include "session_record.h"
@@ -11,14 +12,17 @@
 #include "uci_client.h"
 
 #include <QAction>
+#include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDir>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLocale>
 #include <QMessageBox>
 #include <QPainter>
@@ -33,6 +37,8 @@
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -51,6 +57,8 @@ const char kOpeningMoveColor[] = "#247C8F";
 const char kPlayedMoveColor[] = "#B85C2B";
 const char kWhiteEngineCommunicationColor[] = "#247C8F";
 const char kBlackEngineCommunicationColor[] = "#B85C2B";
+constexpr int kHistoryEntryRole = Qt::UserRole;
+constexpr int kHistoryGameRole = Qt::UserRole + 1;
 
 QPixmap colorIndicatorPixmap(Color color, int size)
 {
@@ -227,6 +235,185 @@ void appendFormattedMoves(QTextCursor& cursor,
         cursor.insertText(moves.at(index),
                           moveTextFormat(index < openingCount));
     }
+}
+
+QString readableHistoryValue(QString value)
+{
+    value.replace(QLatin1Char('_'), QLatin1Char(' '));
+    if (!value.isEmpty()) {
+        value[0] = value.at(0).toUpper();
+    }
+    return value;
+}
+
+QString historyDate(const QDateTime& dateTime)
+{
+    return dateTime.isValid()
+        ? QLocale().toString(dateTime.toLocalTime(), QLocale::ShortFormat)
+        : QStringLiteral("-");
+}
+
+QString historyTimeControl(const HistoryEntry& entry)
+{
+    if (entry.baseTimeSeconds <= 0) {
+        return entry.timeControl.isEmpty()
+            ? QObject::tr("Untimed")
+            : entry.timeControl;
+    }
+
+    const QString clock = QStringLiteral("%1+%2")
+        .arg(entry.baseTimeSeconds)
+        .arg(entry.incrementSeconds);
+    return entry.timeControl.isEmpty()
+        ? clock
+        : QStringLiteral("%1  %2").arg(entry.timeControl, clock);
+}
+
+QString historyEntrySearchText(const HistoryEntry& entry)
+{
+    QStringList values = {
+        entry.sessionTag,
+        entry.status,
+        entry.player1,
+        entry.player2,
+        entry.result,
+        entry.termination,
+        entry.openingName
+    };
+    return values.join(QLatin1Char(' ')).toLower();
+}
+
+QString historyGameSearchText(const HistoryGame& game)
+{
+    const QStringList values = {
+        game.status,
+        game.white,
+        game.black,
+        game.result,
+        game.termination,
+        game.openingName
+    };
+    return values.join(QLatin1Char(' ')).toLower();
+}
+
+void renderHistoryDetails(QPlainTextEdit *editor,
+                          const HistoryEntry& entry,
+                          const HistoryGame *game)
+{
+    if (!editor) {
+        return;
+    }
+
+    editor->clear();
+    QTextCursor cursor(editor->document());
+    QTextCharFormat titleFormat;
+    titleFormat.setFontWeight(QFont::Bold);
+    titleFormat.setFontPointSize(12);
+    QTextCharFormat sectionFormat;
+    sectionFormat.setFontWeight(QFont::Bold);
+    QTextCharFormat openingFormat = moveTextFormat(true);
+
+    const auto section = [&cursor, &sectionFormat](const QString& title) {
+        cursor.insertText(QStringLiteral("\n\n---------- %1 ----------\n")
+                              .arg(title),
+                          sectionFormat);
+    };
+    const auto field = [&cursor](const QString& name, const QString& value) {
+        if (!value.isEmpty()) {
+            cursor.insertText(QStringLiteral("%1: %2\n").arg(name, value));
+        }
+    };
+
+    if (game) {
+        cursor.insertText(
+            QObject::tr("TOURNAMENT GAME %1").arg(game->gameNumber),
+            titleFormat);
+        cursor.insertText(QStringLiteral("\n%1 - %2 : %3")
+                              .arg(game->white,
+                                   game->black,
+                                   game->result.isEmpty()
+                                       ? readableHistoryValue(game->status)
+                                       : game->result));
+        section(QObject::tr("Information"));
+        field(QObject::tr("Date"), historyDate(game->startedAt));
+        field(QObject::tr("Status"), readableHistoryValue(game->status));
+        field(QObject::tr("Time"), historyTimeControl(entry));
+        field(QObject::tr("Opening"), game->openingName);
+        field(QObject::tr("Termination"),
+              readableHistoryValue(game->termination));
+        field(QObject::tr("Message"), game->message);
+        if (!game->moves.isEmpty()) {
+            section(QObject::tr("Moves"));
+            appendFormattedMoves(cursor,
+                                 game->moves,
+                                 game->openingMoveCount,
+                                 true);
+        }
+    } else if (entry.type == HistorySessionType::Tournament) {
+        cursor.insertText(QObject::tr("TOURNAMENT"), titleFormat);
+        cursor.insertText(QStringLiteral("\n%1 - %2")
+                              .arg(entry.player1, entry.player2));
+        section(QObject::tr("Summary"));
+        field(QObject::tr("Date"), historyDate(entry.startedAt));
+        field(QObject::tr("Status"), readableHistoryValue(entry.status));
+        field(QObject::tr("Time"), historyTimeControl(entry));
+        field(QObject::tr("Games"),
+              QStringLiteral("%1/%2")
+                  .arg(entry.completedGames)
+                  .arg(entry.totalGames));
+        field(QObject::tr("W-L-D"),
+              QStringLiteral("%1-%2-%3")
+                  .arg(entry.player1Wins)
+                  .arg(entry.player2Wins)
+                  .arg(entry.draws));
+        if (!entry.games.isEmpty()) {
+            section(QObject::tr("Games"));
+            for (const HistoryGame& item : entry.games) {
+                cursor.insertText(
+                    QStringLiteral("%1. %2 - %3 : %4\n")
+                        .arg(item.gameNumber)
+                        .arg(item.white)
+                        .arg(item.black)
+                        .arg(item.result.isEmpty()
+                                 ? readableHistoryValue(item.status)
+                                 : item.result));
+            }
+        }
+    } else {
+        cursor.insertText(QObject::tr("GAME"), titleFormat);
+        cursor.insertText(QStringLiteral("\n%1 - %2 : %3")
+                              .arg(entry.player1,
+                                   entry.player2,
+                                   entry.result.isEmpty()
+                                       ? readableHistoryValue(entry.status)
+                                       : entry.result));
+        section(QObject::tr("Information"));
+        field(QObject::tr("Date"), historyDate(entry.startedAt));
+        field(QObject::tr("Status"), readableHistoryValue(entry.status));
+        field(QObject::tr("Time"), historyTimeControl(entry));
+        if (!entry.openingName.isEmpty()) {
+            cursor.insertText(
+                QStringLiteral("%1: %2\n")
+                    .arg(QObject::tr("Opening"), entry.openingName),
+                openingFormat);
+        }
+        field(QObject::tr("Termination"),
+              readableHistoryValue(entry.termination));
+        field(QObject::tr("Message"), entry.message);
+        if (!entry.moves.isEmpty()) {
+            section(QObject::tr("Moves"));
+            appendFormattedMoves(cursor,
+                                 entry.moves,
+                                 entry.openingMoveCount,
+                                 true);
+        }
+    }
+
+    editor->setTextCursor(cursor);
+    editor->verticalScrollBar()->setValue(
+        editor->verticalScrollBar()->minimum());
+    editor->horizontalScrollBar()->setValue(
+        editor->horizontalScrollBar()->minimum());
 }
 
 QString formatClockMs(qint64 ms)
@@ -578,10 +765,21 @@ MainWindow::MainWindow(QWidget *parent)
     setColorIndicator(ui->labelBlackTime, BLACK);
     configureMoveList(ui->gameMovesText);
     configureMoveList(ui->tournamentHistoryText);
+    configureMoveList(ui->historyDetailsText);
     configureMoveLegend(ui->labelGameMoveLegend);
     configureMoveLegend(ui->labelTournamentMoveLegend);
+    configureMoveLegend(ui->labelHistoryMoveLegend);
     configureEngineOutput(ui->whiteEngineOutputText);
     configureEngineOutput(ui->blackEngineOutputText);
+    ui->historyTree->header()->setSectionResizeMode(
+        0, QHeaderView::ResizeToContents);
+    ui->historyTree->header()->setSectionResizeMode(
+        1, QHeaderView::ResizeToContents);
+    ui->historyTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);
+    ui->historyTree->header()->setSectionResizeMode(
+        3, QHeaderView::ResizeToContents);
+    ui->historySplitter->setStretchFactor(0, 3);
+    ui->historySplitter->setStretchFactor(1, 4);
     setTournamentTabActive(false);
     ui->pauseButton->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
     ui->stopButton->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
@@ -596,6 +794,28 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::stopCurrentSession);
     connect(ui->restartButton, &QPushButton::clicked,
             this, &MainWindow::restartLastSession);
+    connect(ui->historyRefreshButton, &QPushButton::clicked,
+            this, &MainWindow::refreshHistory);
+    connect(ui->historyFilterEdit, &QLineEdit::textChanged,
+            this, [this]() {
+        populateHistoryTree();
+    });
+    connect(ui->historyTypeCombo, &QComboBox::currentIndexChanged,
+            this, [this]() {
+        populateHistoryTree();
+    });
+    connect(ui->historyTree, &QTreeWidget::itemSelectionChanged,
+            this, &MainWindow::updateHistoryDetails);
+    connect(ui->historyOpenPgnButton, &QPushButton::clicked,
+            this, &MainWindow::openSelectedHistoryPgn);
+    connect(ui->historyOpenFolderButton, &QPushButton::clicked,
+            this, &MainWindow::openSelectedHistoryDirectory);
+    connect(ui->tabWidget, &QTabWidget::currentChanged,
+            this, [this](int index) {
+        if (ui->tabWidget->widget(index) == ui->tabHistory) {
+            refreshHistory();
+        }
+    });
 
     if (m_clockUiTimer) {
         m_clockUiTimer->setInterval(100);
@@ -799,6 +1019,7 @@ MainWindow::MainWindow(QWidget *parent)
             [this](int, const GameResult&) {
         updateTournamentHistory();
         updateTournamentStandings();
+        refreshHistory();
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentFinished, this,
@@ -812,6 +1033,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
         updateTournamentHistory();
         updateTournamentStandings();
+        refreshHistory();
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(message);
         }
@@ -826,6 +1048,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
         updateTournamentHistory();
         updateTournamentStandings();
+        refreshHistory();
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(tr("%1: %2").arg(title, message));
         }
@@ -879,6 +1102,7 @@ MainWindow::MainWindow(QWidget *parent)
     }
     updateGameMoveList();
     updateSessionControls();
+    refreshHistory();
 }
 
 MainWindow::~MainWindow()
@@ -1069,6 +1293,7 @@ void MainWindow::finalizeMatchRecord(const QString& status,
         warnSessionRecordFailure(this, errorDetail);
     }
     m_hasActiveMatchRecord = false;
+    refreshHistory();
 }
 
 bool MainWindow::stopActiveSession()
@@ -1325,6 +1550,251 @@ void MainWindow::updateGameMoveList()
                          true);
     ui->gameMovesText->setTextCursor(cursor);
     ui->gameMovesText->ensureCursorVisible();
+}
+
+void MainWindow::refreshHistory()
+{
+    if (!ui || !ui->historyTree) {
+        return;
+    }
+
+    QString selectedSessionTag;
+    int selectedGame = -1;
+    if (QTreeWidgetItem *selected = ui->historyTree->currentItem()) {
+        const int entryIndex =
+            selected->data(0, kHistoryEntryRole).toInt();
+        if (entryIndex >= 0 && entryIndex < m_historyEntries.size()) {
+            selectedSessionTag = m_historyEntries.at(entryIndex).sessionTag;
+            selectedGame = selected->data(0, kHistoryGameRole).toInt();
+        }
+    }
+
+    const HistoryLoadResult result = loadSessionHistory(sessionsRootDir());
+    m_historyEntries = result.entries;
+    populateHistoryTree();
+
+    if (!selectedSessionTag.isEmpty()) {
+        for (int topIndex = 0;
+             topIndex < ui->historyTree->topLevelItemCount();
+             ++topIndex) {
+            QTreeWidgetItem *top = ui->historyTree->topLevelItem(topIndex);
+            const int entryIndex =
+                top->data(0, kHistoryEntryRole).toInt();
+            if (entryIndex < 0 || entryIndex >= m_historyEntries.size()
+                || m_historyEntries.at(entryIndex).sessionTag
+                    != selectedSessionTag) {
+                continue;
+            }
+
+            QTreeWidgetItem *selection = top;
+            if (selectedGame >= 0) {
+                for (int childIndex = 0;
+                     childIndex < top->childCount();
+                     ++childIndex) {
+                    QTreeWidgetItem *child = top->child(childIndex);
+                    if (child->data(0, kHistoryGameRole).toInt()
+                        == selectedGame) {
+                        selection = child;
+                        top->setExpanded(true);
+                        break;
+                    }
+                }
+            }
+            ui->historyTree->setCurrentItem(selection);
+            break;
+        }
+    }
+
+    if (!result.warnings.isEmpty() && ui->statusbar) {
+        ui->statusbar->showMessage(
+            tr("History loaded with %n unreadable record(s).",
+               nullptr,
+               result.warnings.size()),
+            8000);
+    }
+}
+
+void MainWindow::populateHistoryTree()
+{
+    if (!ui || !ui->historyTree) {
+        return;
+    }
+
+    const QString filter = ui->historyFilterEdit->text().trimmed().toLower();
+    const int typeFilter = ui->historyTypeCombo->currentIndex();
+    ui->historyTree->setUpdatesEnabled(false);
+    ui->historyTree->clear();
+
+    for (int entryIndex = 0;
+         entryIndex < m_historyEntries.size();
+         ++entryIndex) {
+        const HistoryEntry& entry = m_historyEntries.at(entryIndex);
+        if ((typeFilter == 1 && entry.type != HistorySessionType::Match)
+            || (typeFilter == 2
+                && entry.type != HistorySessionType::Tournament)) {
+            continue;
+        }
+
+        const bool parentMatches = filter.isEmpty()
+            || historyEntrySearchText(entry).contains(filter);
+        bool gameMatches = false;
+        for (const HistoryGame& game : entry.games) {
+            gameMatches = gameMatches
+                || historyGameSearchText(game).contains(filter);
+        }
+        if (!parentMatches && !gameMatches) {
+            continue;
+        }
+
+        const QString type = entry.type == HistorySessionType::Tournament
+            ? tr("Tournament")
+            : tr("Game");
+        const QString result =
+            entry.type == HistorySessionType::Tournament
+            ? tr("W-L-D %1-%2-%3")
+                  .arg(entry.player1Wins)
+                  .arg(entry.player2Wins)
+                  .arg(entry.draws)
+            : entry.result.isEmpty()
+                ? readableHistoryValue(entry.status)
+                : entry.result;
+        auto *top = new QTreeWidgetItem(ui->historyTree);
+        top->setText(0, historyDate(entry.startedAt));
+        top->setText(1, type);
+        top->setText(2, QStringLiteral("%1 - %2")
+                            .arg(entry.player1, entry.player2));
+        top->setText(3, result);
+        top->setData(0, kHistoryEntryRole, entryIndex);
+        top->setData(0, kHistoryGameRole, -1);
+
+        if (entry.type == HistorySessionType::Tournament) {
+            QFont font = top->font(0);
+            font.setBold(true);
+            for (int column = 0; column < 4; ++column) {
+                top->setFont(column, font);
+            }
+        }
+
+        for (int gameIndex = 0;
+             gameIndex < entry.games.size();
+             ++gameIndex) {
+            const HistoryGame& game = entry.games.at(gameIndex);
+            if (!parentMatches
+                && !historyGameSearchText(game).contains(filter)) {
+                continue;
+            }
+
+            auto *child = new QTreeWidgetItem(top);
+            child->setText(0, historyDate(game.startedAt));
+            child->setText(1, tr("Game %1").arg(game.gameNumber));
+            child->setText(2, QStringLiteral("%1 - %2")
+                                  .arg(game.white, game.black));
+            child->setText(3, game.result.isEmpty()
+                                  ? readableHistoryValue(game.status)
+                                  : game.result);
+            child->setData(0, kHistoryEntryRole, entryIndex);
+            child->setData(0, kHistoryGameRole, gameIndex);
+        }
+        top->setExpanded(!filter.isEmpty());
+    }
+
+    ui->historyTree->setUpdatesEnabled(true);
+    if (ui->historyTree->topLevelItemCount() > 0) {
+        ui->historyTree->setCurrentItem(
+            ui->historyTree->topLevelItem(0));
+    } else {
+        updateHistoryDetails();
+    }
+}
+
+void MainWindow::updateHistoryDetails()
+{
+    if (!ui || !ui->historyTree || !ui->historyDetailsText) {
+        return;
+    }
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected) {
+        ui->historyDetailsText->setPlainText(
+            m_historyEntries.isEmpty()
+                ? tr("No saved games or tournaments were found.")
+                : tr("No sessions match the current filter."));
+        ui->historyOpenPgnButton->setEnabled(false);
+        ui->historyOpenFolderButton->setEnabled(false);
+        return;
+    }
+
+    const int entryIndex =
+        selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const HistoryEntry& entry = m_historyEntries.at(entryIndex);
+    const int gameIndex = selected->data(0, kHistoryGameRole).toInt();
+    const HistoryGame *game =
+        gameIndex >= 0 && gameIndex < entry.games.size()
+        ? &entry.games.at(gameIndex)
+        : nullptr;
+    renderHistoryDetails(ui->historyDetailsText, entry, game);
+    ui->historyOpenPgnButton->setEnabled(
+        !entry.pgnFilePath.isEmpty()
+        && QFileInfo::exists(entry.pgnFilePath));
+    ui->historyOpenFolderButton->setEnabled(
+        QDir(entry.directoryPath).exists());
+}
+
+void MainWindow::openSelectedHistoryPgn()
+{
+    if (!ui || !ui->historyTree) {
+        return;
+    }
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected) {
+        return;
+    }
+    const int entryIndex =
+        selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const QString pgnPath = m_historyEntries.at(entryIndex).pgnFilePath;
+    if (pgnPath.isEmpty() || !QFileInfo::exists(pgnPath)
+        || !QDesktopServices::openUrl(QUrl::fromLocalFile(pgnPath))) {
+        QMessageBox::warning(
+            this,
+            tr("Open PGN"),
+            tr("The PGN file is not available or could not be opened."));
+    }
+}
+
+void MainWindow::openSelectedHistoryDirectory()
+{
+    if (!ui || !ui->historyTree) {
+        return;
+    }
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected) {
+        return;
+    }
+    const int entryIndex =
+        selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const QString directory =
+        m_historyEntries.at(entryIndex).directoryPath;
+    if (!QDir(directory).exists()
+        || !QDesktopServices::openUrl(QUrl::fromLocalFile(directory))) {
+        QMessageBox::warning(
+            this,
+            tr("Open folder"),
+            tr("The session folder is not available or could not be opened."));
+    }
 }
 
 void MainWindow::updateGameOpeningLabel()

@@ -418,6 +418,186 @@
            </item>
           </layout>
          </widget>
+         <widget class="QWidget" name="tabHistory">
+          <attribute name="title">
+           <string>History</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="historyTabLayout">
+           <item>
+            <layout class="QHBoxLayout" name="historyFilterLayout">
+             <item>
+              <widget class="QLineEdit" name="historyFilterEdit">
+               <property name="clearButtonEnabled">
+                <bool>true</bool>
+               </property>
+               <property name="placeholderText">
+                <string>Filter by player, result, opening or status</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QComboBox" name="historyTypeCombo">
+               <item>
+                <property name="text">
+                 <string>All sessions</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Single games</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Tournaments</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="historyRefreshButton">
+               <property name="text">
+                <string>Refresh</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QSplitter" name="historySplitter">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <widget class="QTreeWidget" name="historyTree">
+              <property name="minimumSize">
+               <size>
+                <width>330</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="alternatingRowColors">
+               <bool>true</bool>
+              </property>
+              <property name="rootIsDecorated">
+               <bool>true</bool>
+              </property>
+              <property name="uniformRowHeights">
+               <bool>true</bool>
+              </property>
+              <property name="selectionMode">
+               <enum>QAbstractItemView::SingleSelection</enum>
+              </property>
+              <column>
+               <property name="text">
+                <string>Date</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>Type</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>Players</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>Result</string>
+               </property>
+              </column>
+             </widget>
+             <widget class="QWidget" name="historyDetailsPanel">
+              <layout class="QVBoxLayout" name="historyDetailsLayout">
+               <property name="leftMargin">
+                <number>10</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="labelHistoryDetails">
+                 <property name="font">
+                  <font>
+                   <pointsize>11</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="text">
+                  <string>Session details</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelHistoryMoveLegend">
+                 <property name="text">
+                  <string/>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPlainTextEdit" name="historyDetailsText">
+                 <property name="readOnly">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="historyActionsLayout">
+                 <item>
+                  <spacer name="historyActionsSpacer">
+                   <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="historyOpenPgnButton">
+                   <property name="enabled">
+                    <bool>false</bool>
+                   </property>
+                   <property name="text">
+                    <string>Open PGN</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="historyOpenFolderButton">
+                   <property name="enabled">
+                    <bool>false</bool>
+                   </property>
+                   <property name="text">
+                    <string>Open folder</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </widget>
+           </item>
+          </layout>
+         </widget>
         </widget>
        </item>
       </layout>

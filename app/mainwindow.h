@@ -3,6 +3,7 @@
 
 #include "app_state.h"
 #include "game_controller.h"
+#include "history_repository.h"
 #include "session_record.h"
 
 #include <QMainWindow>
@@ -57,6 +58,11 @@ private:
     void updateEngineOutputPanels(const MatchConfig& match);
     void updateDebugLogPath();
     void openDebugWindow();
+    void refreshHistory();
+    void populateHistoryTree();
+    void updateHistoryDetails();
+    void openSelectedHistoryPgn();
+    void openSelectedHistoryDirectory();
     void updateClockUi();
     void updateSideToMoveLabel(const Xake::Position& position);
     void finalizeMatchRecord(const QString& status,
@@ -82,5 +88,6 @@ private:
     SessionRecord m_matchRecord;
     QString m_matchRecordPath;
     bool m_hasActiveMatchRecord = false;
+    QVector<HistoryEntry> m_historyEntries;
 };
 #endif // MAINWINDOW_H
