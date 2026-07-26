@@ -115,13 +115,36 @@ private slots:
     void controllerStopsOnTimeout();
     void controllerRejectsMoveAfterTimeout();
     void controllerStopsWhenEngineExits();
+    void controllerReportsEngineCrash();
+    void controllerReportsEngineStandardError();
+    void controllerReportsEngineWriteError();
+    void controllerReportsMalformedEngineBestMove();
+    void controllerReportsIllegalEngineBestMove();
+    void controllerReportsNoMoveBestMove();
+    void controllerReportsUnexpectedEngineBestMove();
+    void controllerReportsHandshakeTimeout();
+    void engineFailureMessages_data();
+    void engineFailureMessages();
     void controllerIgnoresDuplicateEngineBestMove();
     void controllerWritesUnifiedEngineCommunicationLog();
     void controllerAnnouncesEachEngineSearch();
     void controllerStartsAfterOpeningMoves();
     void controllerPauseFreezesClockAndRejectsMoves();
     void controllerDiscardsBestMoveFromPausedSearch();
+
+private:
+    static void prepareWhiteEngineSearch(GameController& controller);
 };
+
+void TestMoveExecution::prepareWhiteEngineSearch(GameController& controller)
+{
+    controller.m_config.player1.type = PlayerType::Engine;
+    controller.m_config.player1.name = QStringLiteral("TestEngine");
+    controller.m_whiteSession.active = true;
+    controller.m_whiteSession.readyOk = true;
+    controller.m_whiteSession.searching = true;
+    controller.m_whiteSession.failureReported = false;
+}
 
 void TestMoveExecution::controllerTracksExecutedMoves()
 {
@@ -363,22 +386,232 @@ void TestMoveExecution::controllerStopsWhenEngineExits()
 {
     GameController controller;
     QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
     QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
     QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)), kStartFen));
 
+    controller.m_config.player1.type = PlayerType::Engine;
+    controller.m_config.player1.name = QStringLiteral("TestEngine");
     controller.m_whiteSession.active = true;
-    controller.handleEngineError(EngineSide::White, QStringLiteral("simulated engine failure"));
     controller.handleEngineExited(EngineSide::White, 17, QProcess::NormalExit);
 
     QCOMPARE(stoppedSpy.count(), 1);
     QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(failureSpy.count(), 1);
     QCOMPARE(controller.isActive(), false);
+
+    const QList<QVariant> failure = failureSpy.takeFirst();
+    QCOMPARE(failure[0].value<EngineFailure>(), EngineFailure::UnexpectedExit);
+    QCOMPARE(failure[1].value<EngineSide>(), EngineSide::White);
 
     const QList<QVariant> message = errorSpy.takeFirst();
     QCOMPARE(message[0].toString(), QStringLiteral("Engine error"));
-    QVERIFY(message[1].toString().contains(QStringLiteral("White engine exited")));
-    QVERIFY(message[1].toString().contains(QStringLiteral("code 17")));
-    QVERIFY(message[1].toString().contains(QStringLiteral("simulated engine failure")));
+    QVERIFY(message[1].toString().contains(QStringLiteral("White engine (TestEngine)")));
+    QVERIFY(message[1].toString().contains(QStringLiteral("exited unexpectedly")));
+    QVERIFY(message[1].toString().contains(QStringLiteral("exit code 17")));
+}
+
+void TestMoveExecution::controllerReportsEngineCrash()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+    prepareWhiteEngineSearch(controller);
+
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
+    controller.m_whiteSession.lastErrorLine = QStringLiteral("access violation");
+    controller.handleEngineExited(EngineSide::White, -1, QProcess::CrashExit);
+
+    QCOMPARE(failureSpy.count(), 1);
+    const QList<QVariant> failure = failureSpy.takeFirst();
+    QCOMPARE(failure[0].value<EngineFailure>(), EngineFailure::ProcessCrashed);
+    QVERIFY(failure[2].toString().contains(QStringLiteral("access violation")));
+    QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::controllerReportsEngineStandardError()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+    prepareWhiteEngineSearch(controller);
+
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
+    controller.handleEngineError(EngineSide::White,
+                                 QStringLiteral("fatal protocol error"));
+
+    QCOMPARE(failureSpy.count(), 1);
+    const QList<QVariant> failure = failureSpy.takeFirst();
+    QCOMPARE(failure[0].value<EngineFailure>(),
+             EngineFailure::StandardErrorOutput);
+    QVERIFY(failure[2].toString().contains(QStringLiteral("fatal protocol error")));
+    QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::controllerReportsEngineWriteError()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+    prepareWhiteEngineSearch(controller);
+
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
+    controller.handleEngineProcessError(EngineSide::White,
+                                        QProcess::WriteError,
+                                        QStringLiteral("broken pipe"));
+
+    QCOMPARE(failureSpy.count(), 1);
+    const QList<QVariant> failure = failureSpy.takeFirst();
+    QCOMPARE(failure[0].value<EngineFailure>(), EngineFailure::WriteError);
+    QVERIFY(failure[2].toString().contains(QStringLiteral("broken pipe")));
+    QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::controllerReportsMalformedEngineBestMove()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+    prepareWhiteEngineSearch(controller);
+
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
+    controller.handleBestMove(EngineSide::White, QStringLiteral("e2e4qz"));
+
+    QCOMPARE(failureSpy.count(), 1);
+    const QList<QVariant> failure = failureSpy.takeFirst();
+    QCOMPARE(failure[0].value<EngineFailure>(), EngineFailure::MalformedBestMove);
+    QVERIFY(failure[2].toString().contains(QStringLiteral("e2e4qz")));
+    QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::controllerReportsIllegalEngineBestMove()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+    prepareWhiteEngineSearch(controller);
+
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
+    controller.handleBestMove(EngineSide::White, QStringLiteral("e2e5"));
+
+    QCOMPARE(failureSpy.count(), 1);
+    const QList<QVariant> failure = failureSpy.takeFirst();
+    QCOMPARE(failure[0].value<EngineFailure>(), EngineFailure::IllegalBestMove);
+    QVERIFY(failure[2].toString().contains(QStringLiteral("e2e5")));
+    QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::controllerReportsNoMoveBestMove()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+    prepareWhiteEngineSearch(controller);
+
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
+    controller.handleBestMove(EngineSide::White, QStringLiteral("0000"));
+
+    QCOMPARE(failureSpy.count(), 1);
+    QCOMPARE(failureSpy.takeFirst()[0].value<EngineFailure>(),
+             EngineFailure::NoMoveBestMove);
+    QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::controllerReportsUnexpectedEngineBestMove()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+    controller.m_config.player2.type = PlayerType::Engine;
+    controller.m_config.player2.name = QStringLiteral("BlackEngine");
+    controller.m_blackSession.active = true;
+    controller.m_blackSession.readyOk = true;
+    controller.m_blackSession.searching = true;
+
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
+    controller.handleBestMove(EngineSide::Black, QStringLiteral("e7e5"));
+
+    QCOMPARE(failureSpy.count(), 1);
+    QCOMPARE(failureSpy.takeFirst()[0].value<EngineFailure>(),
+             EngineFailure::UnexpectedBestMove);
+    QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::controllerReportsHandshakeTimeout()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+    controller.m_config.player1.type = PlayerType::Engine;
+    controller.m_config.player1.name = QStringLiteral("SilentEngine");
+    controller.m_whiteSession.active = true;
+    controller.m_engineResponseTimeoutMs = 1;
+
+    QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
+    controller.armEngineResponseTimeout(EngineSide::White,
+                                        EngineFailure::UciHandshakeTimeout);
+
+    QTRY_COMPARE_WITH_TIMEOUT(failureSpy.count(), 1, 100);
+    QCOMPARE(failureSpy.takeFirst()[0].value<EngineFailure>(),
+             EngineFailure::UciHandshakeTimeout);
+    QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::engineFailureMessages_data()
+{
+    QTest::addColumn<EngineFailure>("failure");
+    QTest::addColumn<QString>("expectedText");
+
+    QTest::newRow("client unavailable")
+        << EngineFailure::ClientUnavailable << QStringLiteral("client is not available");
+    QTest::newRow("start failed")
+        << EngineFailure::StartFailed << QStringLiteral("could not be started");
+    QTest::newRow("uci timeout")
+        << EngineFailure::UciHandshakeTimeout << QStringLiteral("uciok");
+    QTest::newRow("ready timeout")
+        << EngineFailure::ReadyHandshakeTimeout << QStringLiteral("readyok");
+    QTest::newRow("stderr")
+        << EngineFailure::StandardErrorOutput << QStringLiteral("stderr");
+    QTest::newRow("crash")
+        << EngineFailure::ProcessCrashed << QStringLiteral("process crashed");
+    QTest::newRow("unexpected exit")
+        << EngineFailure::UnexpectedExit << QStringLiteral("exited unexpectedly");
+    QTest::newRow("read")
+        << EngineFailure::ReadError << QStringLiteral("read data");
+    QTest::newRow("write")
+        << EngineFailure::WriteError << QStringLiteral("send data");
+    QTest::newRow("process timeout")
+        << EngineFailure::ProcessTimeout << QStringLiteral("timed out");
+    QTest::newRow("unknown process")
+        << EngineFailure::UnknownProcessError << QStringLiteral("unknown process error");
+    QTest::newRow("empty bestmove")
+        << EngineFailure::EmptyBestMove << QStringLiteral("empty bestmove");
+    QTest::newRow("no move")
+        << EngineFailure::NoMoveBestMove << QStringLiteral("bestmove 0000");
+    QTest::newRow("malformed bestmove")
+        << EngineFailure::MalformedBestMove << QStringLiteral("malformed bestmove");
+    QTest::newRow("illegal bestmove")
+        << EngineFailure::IllegalBestMove << QStringLiteral("illegal bestmove");
+    QTest::newRow("unexpected bestmove")
+        << EngineFailure::UnexpectedBestMove << QStringLiteral("not that engine's turn");
+}
+
+void TestMoveExecution::engineFailureMessages()
+{
+    QFETCH(EngineFailure, failure);
+    QFETCH(QString, expectedText);
+
+    GameController controller;
+    controller.m_config.player1.name = QStringLiteral("TestEngine");
+    const QString message = controller.engineFailureMessage(
+        EngineSide::White,
+        failure,
+        QStringLiteral("test detail"),
+        QStringLiteral("e2e5"),
+        17);
+
+    QVERIFY2(message.contains(expectedText, Qt::CaseInsensitive),
+             qPrintable(message));
 }
 
 void TestMoveExecution::controllerIgnoresDuplicateEngineBestMove()
@@ -545,6 +778,8 @@ void TestMoveExecution::controllerDiscardsBestMoveFromPausedSearch()
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+    qRegisterMetaType<EngineFailure>();
+    qRegisterMetaType<EngineSide>();
     TestMoveExecution test;
     return QTest::qExec(&test, argc, argv);
 }

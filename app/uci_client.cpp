@@ -16,6 +16,10 @@ UciClient::UciClient(QObject *parent)
     connect(&m_process, &QProcess::readyReadStandardError,
             this, &UciClient::onReadyReadStandardError);
     connect(&m_process, &QProcess::started, this, &UciClient::engineStarted);
+    connect(&m_process, &QProcess::errorOccurred, this,
+            [this](QProcess::ProcessError error) {
+        emit processError(error, m_process.errorString());
+    });
     connect(&m_process,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &UciClient::onProcessFinished);
@@ -60,6 +64,11 @@ void UciClient::stopProcess()
 bool UciClient::isRunning() const
 {
     return m_process.state() != QProcess::NotRunning;
+}
+
+QString UciClient::errorString() const
+{
+    return m_process.errorString();
 }
 
 bool UciClient::setLogFilePath(const QString& path)
@@ -211,7 +220,10 @@ void UciClient::sendRawCommand(const QString& line)
     if (!data.endsWith('\n')) {
         data.append('\n');
     }
-    m_process.write(data);
+    const qint64 written = m_process.write(data);
+    if (written != data.size()) {
+        emit processError(QProcess::WriteError, m_process.errorString());
+    }
 }
 
 void UciClient::onReadyReadStandardOutput()

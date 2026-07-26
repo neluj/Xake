@@ -23,6 +23,27 @@ enum class EngineSide {
 
 Q_DECLARE_METATYPE(EngineSide)
 
+enum class EngineFailure {
+    ClientUnavailable,
+    StartFailed,
+    UciHandshakeTimeout,
+    ReadyHandshakeTimeout,
+    StandardErrorOutput,
+    ProcessCrashed,
+    UnexpectedExit,
+    ReadError,
+    WriteError,
+    ProcessTimeout,
+    UnknownProcessError,
+    EmptyBestMove,
+    NoMoveBestMove,
+    MalformedBestMove,
+    IllegalBestMove,
+    UnexpectedBestMove
+};
+
+Q_DECLARE_METATYPE(EngineFailure)
+
 struct EngineSession {
     UciClient *client = nullptr;
     bool active = false;
@@ -30,6 +51,8 @@ struct EngineSession {
     bool readyOk = false;
     bool searching = false;
     bool discardBestMove = false;
+    bool failureReported = false;
+    quint64 handshakeGeneration = 0;
     QString lastErrorLine;
 };
 
@@ -97,6 +120,9 @@ signals:
     void gameFinished(const GameResult& result);
     void gameAborted(const QString& title, const QString& message);
     void errorOccurred(const QString& title, const QString& message);
+    void engineFailureOccurred(EngineFailure failure,
+                               EngineSide side,
+                               const QString& message);
     void engineSearchStarted(EngineSide side);
     void engineOutputReceived(EngineSide side, const QString& line);
     void communicationHistoryReset();
@@ -122,13 +148,17 @@ private:
                     const QString& message);
     bool finishGameIfTimeExpired();
     bool finishGameOnTime(Xake::Color flaggedSide);
-    bool startEngineForPlayer(EngineSession& session,
+    bool startEngineForPlayer(EngineSide side,
+                              EngineSession& session,
                               const PlayerConfig& player);
     void stopEngines();
     void startSideTimer(Xake::Color side);
     void stopSideTimer(Xake::Color side);
     void startTurnIfReady();
     void handleEngineError(EngineSide side, const QString& line);
+    void handleEngineProcessError(EngineSide side,
+                                  QProcess::ProcessError error,
+                                  const QString& detail);
     void handleEngineExited(EngineSide side, int exitCode, QProcess::ExitStatus status);
     void handleEngineCommunication(EngineSide side,
                                    const QString& prefix,
@@ -141,6 +171,18 @@ private:
     void handleUciOk(EngineSide side);
     void handleReadyOk(EngineSide side);
     void handleBestMove(EngineSide side, const QString& move);
+    void armEngineResponseTimeout(EngineSide side, EngineFailure failure);
+    void reportEngineFailure(EngineSide side,
+                             EngineFailure failure,
+                             const QString& detail = QString(),
+                             const QString& move = QString(),
+                             int exitCode = 0,
+                             bool abortGame = true);
+    QString engineFailureMessage(EngineSide side,
+                                 EngineFailure failure,
+                                 const QString& detail,
+                                 const QString& move,
+                                 int exitCode) const;
     void sendPositionToEngine(EngineSession& session);
     void sendGoForSide(EngineSide side);
     EngineSession& sessionForSide(EngineSide side);
@@ -170,4 +212,5 @@ private:
     QStringList m_communicationHistory;
     bool m_communicationLogErrorReported = false;
     int m_maxFullMoves = 0;
+    int m_engineResponseTimeoutMs = 10000;
 };
