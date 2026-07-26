@@ -740,19 +740,6 @@ MainWindow::~MainWindow()
 
 bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* tournament)
 {
-    if (m_tournamentRunner && m_tournamentRunner->isActive()) {
-        QMessageBox::warning(this,
-                             tr("Tournament in progress"),
-                             tr("Finish the current tournament before starting another game."));
-        return false;
-    }
-    if (m_gameController && m_gameController->isActive()) {
-        QMessageBox::warning(this,
-                             tr("Game in progress"),
-                             tr("Finish the current game before starting another one."));
-        return false;
-    }
-
     QVector<OpeningEntry> openings;
     if (config.game.useOpeningFile) {
         QString openingError;
@@ -766,6 +753,44 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
             ? tr("Start position")
             : tr("Custom position");
         openings.append(OpeningEntry{1, name, fen, fen, {}});
+    }
+
+    const bool tournamentActive =
+        m_tournamentRunner && m_tournamentRunner->isActive();
+    const bool gameActive = m_gameController && m_gameController->isActive();
+    if (tournamentActive || gameActive) {
+        const QString currentSession =
+            tournamentActive ? tr("tournament") : tr("game");
+        const QString newSession = tournament ? tr("tournament") : tr("game");
+
+        QMessageBox confirmation(
+            QMessageBox::Warning,
+            tr("Session in progress"),
+            tr("A %1 is currently in progress.\n\n"
+               "Do you want to stop it and start the new %2, or keep the "
+               "current %1 running?")
+                .arg(currentSession, newSession),
+            QMessageBox::NoButton,
+            this);
+        QPushButton *stopAndStartButton = confirmation.addButton(
+            tr("Stop and start new"),
+            QMessageBox::AcceptRole);
+        QPushButton *keepPlayingButton = confirmation.addButton(
+            tr("Keep current session"),
+            QMessageBox::RejectRole);
+        confirmation.setDefaultButton(keepPlayingButton);
+        confirmation.setEscapeButton(keepPlayingButton);
+        confirmation.exec();
+
+        if (confirmation.clickedButton() != stopAndStartButton) {
+            return false;
+        }
+        const bool stillActive =
+            (m_tournamentRunner && m_tournamentRunner->isActive())
+            || (m_gameController && m_gameController->isActive());
+        if (stillActive && !stopActiveSession()) {
+            return false;
+        }
     }
 
     const OpeningEntry& firstOpening = openings.first();
@@ -833,6 +858,19 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
     return started;
 }
 
+bool MainWindow::stopActiveSession()
+{
+    bool stopped = false;
+    if (m_tournamentRunner && m_tournamentRunner->isActive()) {
+        stopped = m_tournamentRunner->stop();
+    } else if (m_gameController && m_gameController->isActive()) {
+        m_gameController->stopMatch();
+        stopped = true;
+    }
+    updateSessionControls();
+    return stopped;
+}
+
 void MainWindow::togglePause()
 {
     bool changed = false;
@@ -877,15 +915,12 @@ void MainWindow::stopCurrentSession()
         return;
     }
 
-    if (tournamentActive) {
-        m_tournamentRunner->stop();
-    } else {
-        m_gameController->stopMatch();
-        if (ui && ui->statusbar) {
-            ui->statusbar->showMessage(tr("Game stopped."));
-        }
+    if (!stopActiveSession()) {
+        return;
     }
-    updateSessionControls();
+    if (!tournamentActive && ui && ui->statusbar) {
+        ui->statusbar->showMessage(tr("Game stopped."));
+    }
 }
 
 void MainWindow::restartLastSession()
@@ -909,10 +944,11 @@ void MainWindow::restartLastSession()
         return;
     }
 
-    if (m_tournamentRunner && m_tournamentRunner->isActive()) {
-        m_tournamentRunner->stop();
-    } else if (m_gameController && m_gameController->isActive()) {
-        m_gameController->stopMatch();
+    const bool active =
+        (m_tournamentRunner && m_tournamentRunner->isActive())
+        || (m_gameController && m_gameController->isActive());
+    if (active && !stopActiveSession()) {
+        return;
     }
 
     if (sessionKind == SessionKind::Tournament && m_state.hasLastTournament) {

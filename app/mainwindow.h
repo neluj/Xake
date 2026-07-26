@@ -39,6 +39,7 @@ private:
 
     void configureEngine();
     bool startMatch(const MatchConfig& config, const TournamentConfig* tournament);
+    bool stopActiveSession();
     void togglePause();
     void stopCurrentSession();
     void restartLastSession();
