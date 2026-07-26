@@ -3,6 +3,7 @@
 
 #include "single_game_dialog.h"
 #include "opening_book.h"
+#include "pgn_export.h"
 #include "session_record.h"
 #include "storage_paths.h"
 #include "tournament_dialog.h"
@@ -491,12 +492,73 @@ bool ensureSessionDir(const QString& dir, QString* errorOut)
     return false;
 }
 
+QString pgnResult(GameOutcome outcome)
+{
+    switch (outcome) {
+    case GameOutcome::WhiteWin:
+        return QStringLiteral("1-0");
+    case GameOutcome::BlackWin:
+        return QStringLiteral("0-1");
+    case GameOutcome::Draw:
+        return QStringLiteral("1/2-1/2");
+    }
+    return QStringLiteral("*");
+}
+
+QString pgnTermination(GameTermination termination)
+{
+    switch (termination) {
+    case GameTermination::Checkmate:
+        return QStringLiteral("checkmate");
+    case GameTermination::Stalemate:
+        return QStringLiteral("stalemate");
+    case GameTermination::FiftyMoveRule:
+        return QStringLiteral("fifty-move rule");
+    case GameTermination::ThreefoldRepetition:
+        return QStringLiteral("threefold repetition");
+    case GameTermination::InsufficientMaterial:
+        return QStringLiteral("insufficient material");
+    case GameTermination::TimeForfeit:
+        return QStringLiteral("time forfeit");
+    case GameTermination::MoveLimit:
+        return QStringLiteral("move limit");
+    }
+    return QString();
+}
+
+QString pgnDate(const QString& isoTimestamp)
+{
+    const QDateTime timestamp = QDateTime::fromString(isoTimestamp, Qt::ISODate);
+    return timestamp.isValid()
+        ? timestamp.date().toString(QStringLiteral("yyyy.MM.dd"))
+        : QStringLiteral("????.??.??");
+}
+
+QString pgnPlayerName(const PlayerConfig& player)
+{
+    if (!player.name.trimmed().isEmpty()) {
+        return player.name.trimmed();
+    }
+    const QString executable = QFileInfo(player.enginePath).completeBaseName();
+    return executable.isEmpty() ? QStringLiteral("?") : executable;
+}
+
+QString pgnTimeControl(const GameConfig& game)
+{
+    if (game.baseTimeSeconds <= 0) {
+        return QStringLiteral("-");
+    }
+    return QStringLiteral("%1+%2")
+        .arg(game.baseTimeSeconds)
+        .arg(game.incrementSeconds);
+}
+
 void warnSessionRecordFailure(QWidget *parent, const QString& detail)
 {
     if (!detail.isEmpty()) {
         QMessageBox::warning(parent,
                              QObject::tr("Session log"),
-                             QObject::tr("Failed to write session record: %1").arg(detail));
+                             QObject::tr("Failed to write session file: %1").arg(detail));
     }
 }
 
@@ -984,6 +1046,26 @@ void MainWindow::finalizeMatchRecord(const QString& status,
 
     QString errorDetail;
     if (!writeSessionRecord(m_matchRecord, m_matchRecordPath, &errorDetail)) {
+        warnSessionRecordFailure(this, errorDetail);
+    }
+
+    PgnGameRecord pgn;
+    pgn.event = QStringLiteral("Xake game");
+    pgn.date = pgnDate(m_matchRecord.startTimeIso);
+    pgn.white = pgnPlayerName(m_matchRecord.match.player1);
+    pgn.black = pgnPlayerName(m_matchRecord.match.player2);
+    pgn.result = result ? pgnResult(result->outcome) : QStringLiteral("*");
+    pgn.termination = result ? pgnTermination(result->termination)
+                             : status;
+    pgn.startFen = m_matchRecord.startFen;
+    pgn.opening = m_matchRecord.openingName;
+    pgn.timeControl = pgnTimeControl(m_matchRecord.match.game);
+    pgn.movesUci = m_matchRecord.moves;
+    const QString pgnPath = QFileInfo(m_matchRecordPath)
+        .dir()
+        .filePath(QStringLiteral("game.pgn"));
+    errorDetail.clear();
+    if (!writePgnFile({pgn}, pgnPath, &errorDetail)) {
         warnSessionRecordFailure(this, errorDetail);
     }
     m_hasActiveMatchRecord = false;

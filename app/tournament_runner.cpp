@@ -1,6 +1,7 @@
 #include "tournament_runner.h"
 
 #include "match_settings_validation.h"
+#include "pgn_export.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -94,6 +95,33 @@ QString terminationName(GameTermination termination)
     return QString();
 }
 
+QString pgnDate(const QString& isoTimestamp)
+{
+    const QDateTime timestamp = QDateTime::fromString(isoTimestamp, Qt::ISODate);
+    return timestamp.isValid()
+        ? timestamp.date().toString(QStringLiteral("yyyy.MM.dd"))
+        : QStringLiteral("????.??.??");
+}
+
+QString pgnPlayerName(const PlayerConfig& player)
+{
+    if (!player.name.trimmed().isEmpty()) {
+        return player.name.trimmed();
+    }
+    const QString executable = QFileInfo(player.enginePath).completeBaseName();
+    return executable.isEmpty() ? QStringLiteral("?") : executable;
+}
+
+QString pgnTimeControl(const GameConfig& game)
+{
+    if (game.baseTimeSeconds <= 0) {
+        return QStringLiteral("-");
+    }
+    return QStringLiteral("%1+%2")
+        .arg(game.baseTimeSeconds)
+        .arg(game.incrementSeconds);
+}
+
 QJsonObject gameRecordToJson(const TournamentGameRecord& record)
 {
     QJsonObject object;
@@ -185,6 +213,9 @@ bool TournamentRunner::start(const TournamentConfig& config,
     m_reportFilePath = m_logDir.isEmpty()
         ? QString()
         : QDir(m_logDir).filePath(QStringLiteral("tournament_report.json"));
+    m_pgnFilePath = m_logDir.isEmpty()
+        ? QString()
+        : QDir(m_logDir).filePath(QStringLiteral("tournament.pgn"));
     m_status = QStringLiteral("in_progress");
     m_startedAtIso = currentTimestamp();
     m_finishedAtIso.clear();
@@ -197,9 +228,11 @@ bool TournamentRunner::start(const TournamentConfig& config,
     m_paused = false;
     m_waitingForNextGame = false;
     m_reportErrorEmitted = false;
+    m_pgnErrorEmitted = false;
     ++m_runGeneration;
 
     persistReport();
+    persistPgn();
     emit tournamentStarted(m_summary.totalGames);
     startNextGame();
     return true;
@@ -267,6 +300,7 @@ bool TournamentRunner::stop()
 
     m_gameController->stopMatch();
     persistReport();
+    persistPgn();
     if (wasPaused) {
         emit pauseChanged(false);
     }
@@ -297,6 +331,11 @@ QVector<TournamentGameRecord> TournamentRunner::gameRecords() const
 QString TournamentRunner::reportFilePath() const
 {
     return m_reportFilePath;
+}
+
+QString TournamentRunner::pgnFilePath() const
+{
+    return m_pgnFilePath;
 }
 
 int TournamentRunner::openingCount() const
@@ -355,6 +394,7 @@ void TournamentRunner::startNextGame()
             current->abortMessage = m_abortMessage;
         }
         persistReport();
+        persistPgn();
         emit tournamentAborted(m_abortTitle, m_abortMessage);
     }
 }
@@ -414,6 +454,7 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
     }
 
     persistReport();
+    persistPgn();
     emit tournamentGameFinished(m_currentGameNumber, result);
     m_waitingForNextGame = true;
     const quint64 runGeneration = m_runGeneration;
@@ -448,6 +489,7 @@ void TournamentRunner::handleGameAborted(const QString& title, const QString& me
         current->abortMessage = message;
     }
     persistReport();
+    persistPgn();
     if (wasPaused) {
         emit pauseChanged(false);
     }
@@ -493,6 +535,7 @@ void TournamentRunner::finishTournament()
     m_status = QStringLiteral("completed");
     m_finishedAtIso = currentTimestamp();
     persistReport();
+    persistPgn();
     if (wasPaused) {
         emit pauseChanged(false);
     }
@@ -519,6 +562,53 @@ void TournamentRunner::persistReport()
     emit tournamentReportError(
         tr("Could not write tournament report '%1': %2")
             .arg(m_reportFilePath, error));
+}
+
+void TournamentRunner::persistPgn()
+{
+    QString error;
+    if (writeTournamentPgn(&error) || m_pgnErrorEmitted) {
+        return;
+    }
+
+    m_pgnErrorEmitted = true;
+    emit tournamentReportError(
+        tr("Could not write tournament PGN '%1': %2")
+            .arg(m_pgnFilePath, error));
+}
+
+bool TournamentRunner::writeTournamentPgn(QString* errorOut) const
+{
+    if (m_pgnFilePath.isEmpty()) {
+        return true;
+    }
+
+    QVector<PgnGameRecord> games;
+    for (const TournamentGameRecord& record : m_gameRecords) {
+        if (!record.completed && !record.aborted) {
+            continue;
+        }
+
+        PgnGameRecord game;
+        game.event = QStringLiteral("Xake tournament");
+        game.date = pgnDate(record.startedAtIso);
+        game.round = QString::number(record.gameNumber);
+        game.white = pgnPlayerName(record.match.player1);
+        game.black = pgnPlayerName(record.match.player2);
+        game.result = record.completed
+            ? resultNotation(record.result.outcome)
+            : QStringLiteral("*");
+        game.termination = record.completed
+            ? terminationName(record.result.termination)
+            : QStringLiteral("abandoned");
+        game.startFen = record.startFen;
+        game.opening = record.openingName;
+        game.timeControl = pgnTimeControl(record.match.game);
+        game.movesUci = record.moves;
+        games.append(game);
+    }
+
+    return writePgnFile(games, m_pgnFilePath, errorOut);
 }
 
 bool TournamentRunner::writeReport(QString* errorOut) const

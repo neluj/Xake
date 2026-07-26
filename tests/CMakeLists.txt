@@ -72,6 +72,16 @@ target_link_libraries(opening_book_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME opening_book_tests COMMAND opening_book_tests)
 
+add_executable(pgn_export_tests
+    test_pgn_export.cpp
+    ${CMAKE_SOURCE_DIR}/app/pgn_export.cpp
+)
+
+target_include_directories(pgn_export_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(pgn_export_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME pgn_export_tests COMMAND pgn_export_tests)
+
 add_executable(move_execution_tests
     test_move_execution.cpp
     ${CMAKE_SOURCE_DIR}/app/game_controller.cpp
@@ -89,6 +99,7 @@ add_executable(tournament_runner_tests
     test_tournament_runner.cpp
     ${CMAKE_SOURCE_DIR}/app/game_controller.cpp
     ${CMAKE_SOURCE_DIR}/app/match_settings_validation.cpp
+    ${CMAKE_SOURCE_DIR}/app/pgn_export.cpp
     ${CMAKE_SOURCE_DIR}/app/storage_paths.cpp
     ${CMAKE_SOURCE_DIR}/app/tournament_runner.cpp
     ${CMAKE_SOURCE_DIR}/app/uci_client.cpp

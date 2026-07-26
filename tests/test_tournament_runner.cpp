@@ -174,6 +174,8 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
 
     QCOMPARE(runner.reportFilePath(),
              reportDir.filePath(QStringLiteral("tournament_report.json")));
+    QCOMPARE(runner.pgnFilePath(),
+             reportDir.filePath(QStringLiteral("tournament.pgn")));
 
     QFile reportFile(runner.reportFilePath());
     QVERIFY(reportFile.open(QIODevice::ReadOnly | QIODevice::Text));
@@ -216,6 +218,14 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     QCOMPARE(opening.value(QStringLiteral("index")).toInt(), 1);
     QCOMPARE(opening.value(QStringLiteral("name")).toString(),
              QStringLiteral("Test opening"));
+
+    QFile pgnFile(runner.pgnFilePath());
+    QVERIFY(pgnFile.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString pgn = QString::fromUtf8(pgnFile.readAll());
+    QVERIFY(pgn.contains(QStringLiteral("[White \"Player 1\"]")));
+    QVERIFY(pgn.contains(QStringLiteral("[Black \"Player 2\"]")));
+    QVERIFY(pgn.contains(QStringLiteral("[Result \"1-0\"]")));
+    QVERIFY(pgn.contains(QStringLiteral("1. Qg7# 1-0")));
 }
 
 void TestTournamentRunner::reusesEachOpeningWithBothColors()

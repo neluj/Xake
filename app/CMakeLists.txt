@@ -12,6 +12,8 @@ set(APP_SOURCES
     match_settings_validation.h
     opening_book.cpp
     opening_book.h
+    pgn_export.cpp
+    pgn_export.h
     uci_client.cpp
     uci_client.h
     single_game_dialog.cpp

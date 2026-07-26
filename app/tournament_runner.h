@@ -61,6 +61,7 @@ public:
     TournamentSummary summary() const;
     QVector<TournamentGameRecord> gameRecords() const;
     QString reportFilePath() const;
+    QString pgnFilePath() const;
     int openingCount() const;
 
 signals:
@@ -83,7 +84,9 @@ private:
     void finishTournament();
     TournamentGameRecord* currentGameRecord();
     void persistReport();
+    void persistPgn();
     bool writeReport(QString* errorOut) const;
+    bool writeTournamentPgn(QString* errorOut) const;
 
     GameController *m_gameController = nullptr;
     TournamentConfig m_config;
@@ -93,6 +96,7 @@ private:
     TournamentSummary m_summary;
     QVector<TournamentGameRecord> m_gameRecords;
     QString m_reportFilePath;
+    QString m_pgnFilePath;
     QString m_status;
     QString m_startedAtIso;
     QString m_finishedAtIso;
@@ -105,5 +109,6 @@ private:
     bool m_paused = false;
     bool m_waitingForNextGame = false;
     bool m_reportErrorEmitted = false;
+    bool m_pgnErrorEmitted = false;
     quint64 m_runGeneration = 0;
 };
