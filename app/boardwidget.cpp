@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QSizePolicy>
 #include <QSvgRenderer>
+#include <QVariantAnimation>
 
 using namespace Xake;
 
@@ -82,18 +83,42 @@ BoardWidget::BoardWidget(QWidget *parent)
         }
     }
 
+    m_moveAnimation = new QVariantAnimation(this);
+    m_moveAnimation->setDuration(180);
+    m_moveAnimation->setStartValue(0.0);
+    m_moveAnimation->setEndValue(1.0);
+    m_moveAnimation->setEasingCurve(QEasingCurve::OutCubic);
+    connect(m_moveAnimation, &QVariantAnimation::valueChanged, this,
+            [this](const QVariant& value) {
+        m_animationProgress = value.toReal();
+        update();
+    });
+    connect(m_moveAnimation, &QVariantAnimation::finished, this, [this]() {
+        m_animationProgress = 1.0;
+        m_animatedPieces.clear();
+        update();
+    });
+
     setFromFenString("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
 
-void BoardWidget::setPosition(const Xake::Position& position)
+void BoardWidget::setPosition(const Xake::Position& position, Xake::Move lastMove)
 {
+    const Position previousPosition = m_position;
     m_position = position;
     m_selectedSq = -1;
+
+    if (lastMove == NOMOVE) {
+        stopMoveAnimation();
+    } else {
+        startMoveAnimation(previousPosition, lastMove);
+    }
     update();
 }
 
 bool BoardWidget::setFromFenString(const std::string& fen)
 {
+    stopMoveAnimation();
     if (!m_position.set_FEN(fen)) {
         return false;
     }
@@ -148,6 +173,16 @@ void BoardWidget::paintEvent(QPaintEvent *event)
                 if (piece == NO_PIECE) {
                     continue;
                 }
+                bool animatedDestination = false;
+                for (const AnimatedPiece& animatedPiece : m_animatedPieces) {
+                    if (animatedPiece.toSq == sq) {
+                        animatedDestination = true;
+                        break;
+                    }
+                }
+                if (animatedDestination) {
+                    continue;
+                }
 
                 const int col = pieceSpriteColumn(piece);
                 if (col < 0) {
@@ -162,6 +197,25 @@ void BoardWidget::paintEvent(QPaintEvent *event)
                 const double py = boardRect.top() + (7 - rank) * cell;
                 const QRectF target(px, py, cell, cell);
                 painter.drawPixmap(target, m_pieceset, source);
+            }
+
+            for (const AnimatedPiece& animatedPiece : m_animatedPieces) {
+                const int col = pieceSpriteColumn(animatedPiece.piece);
+                if (col < 0) {
+                    continue;
+                }
+
+                const int row = (piece_color(animatedPiece.piece) == WHITE) ? 0 : 1;
+                const QRectF source(col * tileW, row * tileH, tileW, tileH);
+                const int fromFile = animatedPiece.fromSq % 8;
+                const int fromRank = animatedPiece.fromSq / 8;
+                const int toFile = animatedPiece.toSq % 8;
+                const int toRank = animatedPiece.toSq / 8;
+                const qreal file = fromFile + (toFile - fromFile) * m_animationProgress;
+                const qreal rank = fromRank + (toRank - fromRank) * m_animationProgress;
+                const qreal px = boardRect.left() + file * cell;
+                const qreal py = boardRect.top() + (7.0 - rank) * cell;
+                painter.drawPixmap(QRectF(px, py, cell, cell), m_pieceset, source);
             }
         }
     }
@@ -191,6 +245,44 @@ void BoardWidget::paintEvent(QPaintEvent *event)
                          Qt::AlignHCenter | Qt::AlignVCenter,
                          QString::number(rank + 1));
     }
+}
+
+void BoardWidget::startMoveAnimation(const Position& previousPosition, Move move)
+{
+    stopMoveAnimation();
+
+    const int fromSq = move_from(move);
+    const int toSq = move_to(move);
+    const Piece movingPiece = pieceAt(previousPosition, fromSq);
+    if (movingPiece == NO_PIECE || pieceAt(m_position, toSq) == NO_PIECE) {
+        update();
+        return;
+    }
+
+    m_animatedPieces.append({movingPiece, fromSq, toSq});
+
+    if (move_special(move) == CASTLE) {
+        const bool kingSide = toSq > fromSq;
+        const int rookFromSq = kingSide ? fromSq + 3 : fromSq - 4;
+        const int rookToSq = kingSide ? fromSq + 1 : fromSq - 1;
+        const Piece rook = pieceAt(previousPosition, rookFromSq);
+        if (rook != NO_PIECE && pieceAt(m_position, rookToSq) != NO_PIECE) {
+            m_animatedPieces.append({rook, rookFromSq, rookToSq});
+        }
+    }
+
+    m_animationProgress = 0.0;
+    m_moveAnimation->start();
+    update();
+}
+
+void BoardWidget::stopMoveAnimation()
+{
+    if (m_moveAnimation) {
+        m_moveAnimation->stop();
+    }
+    m_animationProgress = 1.0;
+    m_animatedPieces.clear();
 }
 
 void BoardWidget::mousePressEvent(QMouseEvent *event)

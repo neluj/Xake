@@ -89,7 +89,7 @@ public:
     qint64 remainingTimeMs(Xake::Color side) const;
 
 signals:
-    void positionChanged(const Xake::Position& position);
+    void positionChanged(const Xake::Position& position, Xake::Move lastMove);
     void movePlayed(int ply, const QString& uciMove);
     void matchStarted(const MatchConfig& config);
     void matchStopped();

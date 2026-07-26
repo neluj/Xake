@@ -565,9 +565,10 @@ MainWindow::MainWindow(QWidget *parent)
         });
     }
 
-    connect(m_gameController, &GameController::positionChanged, this, [this](const Xake::Position& position) {
+    connect(m_gameController, &GameController::positionChanged, this,
+            [this](const Xake::Position& position, Xake::Move lastMove) {
         if (ui && ui->board) {
-            ui->board->setPosition(position);
+            ui->board->setPosition(position, lastMove);
         }
         updateSideToMoveLabel(position);
         updateClockUi();

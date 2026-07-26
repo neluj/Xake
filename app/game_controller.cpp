@@ -226,7 +226,7 @@ bool GameController::startMatch(const MatchConfig& config,
     }
 
     emit matchStarted(m_config);
-    emit positionChanged(m_position);
+    emit positionChanged(m_position, NOMOVE);
     if (finishGameIfNoLegalMoves() || finishGameIfDraw()) {
         return true;
     }
@@ -852,7 +852,7 @@ void GameController::afterMoveApplied(Move move)
     m_uciMoves.append(uci.toLower());
     m_moveHistory.append(move);
     emit movePlayed(m_uciMoves.size(), m_uciMoves.constLast());
-    emit positionChanged(m_position);
+    emit positionChanged(m_position, move);
 
     if (finishGameIfNoLegalMoves()) {
         return;
