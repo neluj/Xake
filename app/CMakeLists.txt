@@ -37,6 +37,10 @@ set(APP_SOURCES
     resources.qrc
 )
 
+if(WIN32)
+    list(APPEND APP_SOURCES xake.rc)
+endif()
+
 qt_add_executable(Xake
     MANUAL_FINALIZATION
     ${APP_SOURCES}
