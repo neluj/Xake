@@ -10,10 +10,12 @@
 
 #include <QAction>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDialog>
 #include <QDir>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
@@ -29,6 +31,7 @@
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <cmath>
@@ -44,6 +47,8 @@ const char kBlackColorResource[] = ":/assets/colors/color_b.svg";
 constexpr int kColorIndicatorSize = 28;
 const char kOpeningMoveColor[] = "#247C8F";
 const char kPlayedMoveColor[] = "#B85C2B";
+const char kWhiteEngineCommunicationColor[] = "#247C8F";
+const char kBlackEngineCommunicationColor[] = "#B85C2B";
 
 QPixmap colorIndicatorPixmap(Color color, int size)
 {
@@ -105,6 +110,67 @@ void configureEngineOutput(QPlainTextEdit *editor)
     editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     editor->setLineWrapMode(QPlainTextEdit::NoWrap);
     editor->setMaximumBlockCount(3000);
+}
+
+QTextCharFormat communicationTextFormat(const QString& line)
+{
+    QTextCharFormat format;
+    if (line.contains(QStringLiteral("[White:"))) {
+        format.setForeground(
+            QColor(QString::fromLatin1(kWhiteEngineCommunicationColor)));
+    } else if (line.contains(QStringLiteral("[Black:"))) {
+        format.setForeground(
+            QColor(QString::fromLatin1(kBlackEngineCommunicationColor)));
+    }
+    return format;
+}
+
+void scrollCommunicationToLatest(QPlainTextEdit *editor)
+{
+    if (!editor) {
+        return;
+    }
+    editor->verticalScrollBar()->setValue(
+        editor->verticalScrollBar()->maximum());
+    editor->horizontalScrollBar()->setValue(
+        editor->horizontalScrollBar()->minimum());
+}
+
+void appendCommunicationLine(QPlainTextEdit *editor,
+                             const QString& line)
+{
+    if (!editor) {
+        return;
+    }
+
+    QTextCursor cursor(editor->document());
+    cursor.movePosition(QTextCursor::End);
+    if (!editor->document()->isEmpty()) {
+        cursor.insertBlock();
+    }
+    cursor.insertText(line, communicationTextFormat(line));
+    editor->setTextCursor(cursor);
+    scrollCommunicationToLatest(editor);
+}
+
+void renderCommunicationHistory(QPlainTextEdit *editor,
+                                const QStringList& history)
+{
+    if (!editor) {
+        return;
+    }
+
+    editor->clear();
+    QTextCursor cursor(editor->document());
+    for (qsizetype index = 0; index < history.size(); ++index) {
+        if (index > 0) {
+            cursor.insertBlock();
+        }
+        const QString& line = history.at(index);
+        cursor.insertText(line, communicationTextFormat(line));
+    }
+    editor->setTextCursor(cursor);
+    scrollCommunicationToLatest(editor);
 }
 
 QTextCharFormat moveTextFormat(bool openingMove)
@@ -549,8 +615,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_gameController, &GameController::communicationLogged, this,
             [this](const QString& line) {
         if (m_debugText) {
-            m_debugText->appendPlainText(line);
-            m_debugText->moveCursor(QTextCursor::End);
+            appendCommunicationLine(m_debugText, line);
         }
     });
 
@@ -1165,6 +1230,7 @@ void MainWindow::updateEngineOutputPanels(const MatchConfig& match)
 void MainWindow::openDebugWindow()
 {
     if (m_debugDialog) {
+        scrollCommunicationToLatest(m_debugText);
         m_debugDialog->show();
         m_debugDialog->raise();
         m_debugDialog->activateWindow();
@@ -1180,18 +1246,41 @@ void MainWindow::openDebugWindow()
     auto *pathLabel = new QLabel(dialog);
     pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     pathLabel->setWordWrap(true);
-    layout->addWidget(pathLabel);
+    auto *openLogButton = new QPushButton(tr("Open log file"), dialog);
+    auto *pathLayout = new QHBoxLayout;
+    pathLayout->addWidget(pathLabel, 1);
+    pathLayout->addWidget(openLogButton);
+    layout->addLayout(pathLayout);
 
     auto *debugText = new QPlainTextEdit(dialog);
     configureEngineOutput(debugText);
     debugText->setMaximumBlockCount(0);
-    debugText->setPlainText(m_gameController->communicationHistory().join('\n'));
-    debugText->moveCursor(QTextCursor::End);
+    renderCommunicationHistory(debugText,
+                               m_gameController->communicationHistory());
     layout->addWidget(debugText);
 
     m_debugDialog = dialog;
     m_debugPathLabel = pathLabel;
     m_debugText = debugText;
+    m_debugOpenLogButton = openLogButton;
+    connect(openLogButton, &QPushButton::clicked, this, [this]() {
+        const QString logPath = m_gameController->communicationLogFilePath();
+        if (logPath.isEmpty() || !QFileInfo::exists(logPath)) {
+            QMessageBox::warning(
+                m_debugDialog,
+                tr("Open log file"),
+                tr("The communication log file is not available."));
+            return;
+        }
+
+        const QString absolutePath = QFileInfo(logPath).absoluteFilePath();
+        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(absolutePath))) {
+            QMessageBox::warning(
+                m_debugDialog,
+                tr("Open log file"),
+                tr("The system could not open the communication log file."));
+        }
+    });
     updateDebugLogPath();
     dialog->show();
 }
@@ -1206,6 +1295,10 @@ void MainWindow::updateDebugLogPath()
     m_debugPathLabel->setText(logPath.isEmpty()
                                   ? tr("No communication log is active.")
                                   : tr("Log: %1").arg(QDir::toNativeSeparators(logPath)));
+    if (m_debugOpenLogButton) {
+        m_debugOpenLogButton->setEnabled(
+            !logPath.isEmpty() && QFileInfo::exists(logPath));
+    }
 }
 
 void MainWindow::updateClockUi()

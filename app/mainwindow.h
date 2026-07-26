@@ -12,6 +12,7 @@
 class QDialog;
 class QLabel;
 class QPlainTextEdit;
+class QPushButton;
 class UciClient;
 class TournamentRunner;
 struct TournamentSummary;
@@ -72,5 +73,6 @@ private:
     QPointer<QDialog> m_debugDialog;
     QPointer<QLabel> m_debugPathLabel;
     QPointer<QPlainTextEdit> m_debugText;
+    QPointer<QPushButton> m_debugOpenLogButton;
 };
 #endif // MAINWINDOW_H
