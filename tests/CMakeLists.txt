@@ -118,6 +118,21 @@ target_link_libraries(perft_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME perft_tests COMMAND perft_tests)
 
+add_executable(perft_epd_tests
+    test_perft_suite.cpp
+)
+
+target_compile_definitions(perft_epd_tests PRIVATE
+    PERFT_SUITE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/data/perftsuite.epd"
+)
+target_link_libraries(perft_epd_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME perft_epd_tests COMMAND perft_epd_tests)
+set_tests_properties(perft_epd_tests PROPERTIES
+    LABELS "perft;release"
+    TIMEOUT 300
+)
+
 add_executable(perft_runner
     perft_runner.cpp
 )
