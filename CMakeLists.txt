@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(Xake VERSION 0.1 LANGUAGES CXX)
+project(Xake VERSION 0.1.0 LANGUAGES CXX)
+
+include(GNUInstallDirs)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -16,3 +18,27 @@ enable_testing()
 add_subdirectory(core)
 add_subdirectory(app)
 add_subdirectory(tests)
+
+install(FILES
+    LICENSE
+    README.md
+    THIRD_PARTY_NOTICES.md
+    QT_SOURCE_OFFER.md
+    DESTINATION .
+)
+install(DIRECTORY licenses DESTINATION .)
+install(DIRECTORY docs DESTINATION .)
+
+set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
+set(CPACK_PACKAGE_VENDOR "Xake contributors")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Chess GUI and UCI engine tournament manager")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "${PROJECT_NAME}")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_PACKAGE_FILE_NAME
+    "${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_GENERATOR "ZIP")
+set(CPACK_PACKAGE_CHECKSUM "SHA256")
+
+include(CPack)

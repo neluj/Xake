@@ -25,6 +25,7 @@ public:
     PlayerConfig player1Config() const;
     PlayerConfig player2Config() const;
     GameConfig gameConfig() const;
+    void setConfig(const MatchConfig& config);
 
 private:
     void applyTimeControlSelection();

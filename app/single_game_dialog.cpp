@@ -22,6 +22,13 @@ MatchConfig SingleGameDialog::config() const
     return m_config;
 }
 
+void SingleGameDialog::setConfig(const MatchConfig& config)
+{
+    if (ui && ui->matchSettingsWidget) {
+        ui->matchSettingsWidget->setConfig(config);
+    }
+}
+
 void SingleGameDialog::accept()
 {
     if (!ui || !ui->matchSettingsWidget) {

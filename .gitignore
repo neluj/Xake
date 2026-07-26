@@ -32,7 +32,6 @@ qrc_*.cpp
 Thumbs.db
 *.res
 *.rc
-!app/xake.rc
 /.qmake.cache
 /.qmake.stash
 

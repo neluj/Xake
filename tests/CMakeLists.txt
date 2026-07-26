@@ -52,6 +52,16 @@ target_link_libraries(storage_paths_tests PRIVATE Qt6::Test)
 
 add_test(NAME storage_paths_tests COMMAND storage_paths_tests)
 
+add_executable(app_settings_tests
+    test_app_settings.cpp
+    ${CMAKE_SOURCE_DIR}/app/app_settings.cpp
+)
+
+target_include_directories(app_settings_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(app_settings_tests PRIVATE Qt6::Test)
+
+add_test(NAME app_settings_tests COMMAND app_settings_tests)
+
 add_executable(history_repository_tests
     test_history_repository.cpp
     ${CMAKE_SOURCE_DIR}/app/history_repository.cpp

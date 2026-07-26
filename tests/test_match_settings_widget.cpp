@@ -16,6 +16,7 @@ private slots:
     void presetDisablesManualTimeFields();
     void customRestoresManualTimeFields();
     void openingFileDisablesManualPosition();
+    void restoresSavedConfiguration();
 };
 
 void TestMatchSettingsWidget::presetDisablesManualTimeFields()
@@ -133,6 +134,43 @@ void TestMatchSettingsWidget::openingFileDisablesManualPosition()
     const GameConfig config = widget.gameConfig();
     QVERIFY(config.useOpeningFile);
     QCOMPARE(config.openingFilePath, QStringLiteral("C:/openings/book.pgn"));
+}
+
+void TestMatchSettingsWidget::restoresSavedConfiguration()
+{
+    MatchSettingsWidget widget;
+    MatchConfig expected;
+    expected.player1.type = PlayerType::Engine;
+    expected.player1.enginePath =
+        QStringLiteral("C:/engines/stockfish.exe");
+    expected.player2.type = PlayerType::Human;
+    expected.player2.name = QStringLiteral("Player");
+    expected.game.timeControl = QStringLiteral("Custom");
+    expected.game.baseTimeSeconds = 75;
+    expected.game.incrementSeconds = 3;
+    expected.game.movesToGo = 20;
+    expected.game.useStartPos = false;
+    expected.game.startPosition =
+        QStringLiteral("8/8/8/8/8/8/4K3/7k w - - 0 1");
+    expected.game.useOpeningFile = true;
+    expected.game.openingFilePath =
+        QStringLiteral("C:/openings/book.pgn");
+
+    widget.setConfig(expected);
+
+    const PlayerConfig player1 = widget.player1Config();
+    const PlayerConfig player2 = widget.player2Config();
+    const GameConfig game = widget.gameConfig();
+    QCOMPARE(player1.type, PlayerType::Engine);
+    QCOMPARE(player1.enginePath, expected.player1.enginePath);
+    QCOMPARE(player2.type, PlayerType::Human);
+    QCOMPARE(player2.name, expected.player2.name);
+    QCOMPARE(game.timeControl, expected.game.timeControl);
+    QCOMPARE(game.baseTimeSeconds, expected.game.baseTimeSeconds);
+    QCOMPARE(game.incrementSeconds, expected.game.incrementSeconds);
+    QCOMPARE(game.movesToGo, expected.game.movesToGo);
+    QCOMPARE(game.useOpeningFile, true);
+    QCOMPARE(game.openingFilePath, expected.game.openingFilePath);
 }
 
 int main(int argc, char **argv)

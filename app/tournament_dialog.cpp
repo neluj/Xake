@@ -29,6 +29,25 @@ TournamentConfig TournamentDialog::config() const
     return m_config;
 }
 
+void TournamentDialog::setConfig(const TournamentConfig& config)
+{
+    if (!ui) {
+        return;
+    }
+    if (ui->matchSettingsWidget) {
+        ui->matchSettingsWidget->setConfig(config.match);
+    }
+    const int typeIndex =
+        ui->tournamentTypeCombo->findText(config.tournamentType,
+                                          Qt::MatchFixedString);
+    if (typeIndex >= 0) {
+        ui->tournamentTypeCombo->setCurrentIndex(typeIndex);
+    }
+    ui->roundsSpin->setValue(config.rounds);
+    ui->gamesPerPairingSpin->setValue(config.gamesPerPairing);
+    ui->maxMovesSpin->setValue(config.maxMoves);
+}
+
 void TournamentDialog::accept()
 {
     if (!ui || !ui->matchSettingsWidget) {

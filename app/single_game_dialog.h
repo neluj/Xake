@@ -17,6 +17,7 @@ public:
     ~SingleGameDialog();
 
     MatchConfig config() const;
+    void setConfig(const MatchConfig& config);
 
 public slots:
     void accept() override;

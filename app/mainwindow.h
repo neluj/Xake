@@ -61,6 +61,7 @@ private:
     void updateEngineOutputPanels(const MatchConfig& match);
     void updateDebugLogPath();
     void openDebugWindow();
+    void showAboutDialog();
     void refreshHistory();
     void populateHistoryTree();
     void updateHistoryDetails();

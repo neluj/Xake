@@ -2,6 +2,8 @@ set(APP_SOURCES
     boardwidget.cpp
     boardwidget.h
     app_state.h
+    app_settings.cpp
+    app_settings.h
     game_controller.cpp
     game_controller.h
     history_repository.cpp
@@ -38,7 +40,12 @@ set(APP_SOURCES
 )
 
 if(WIN32)
-    list(APPEND APP_SOURCES xake.rc)
+    configure_file(
+        xake.rc.in
+        ${CMAKE_CURRENT_BINARY_DIR}/xake.rc
+        @ONLY
+    )
+    list(APPEND APP_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/xake.rc)
 endif()
 
 qt_add_executable(Xake
@@ -48,10 +55,25 @@ qt_add_executable(Xake
 
 target_include_directories(Xake PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(Xake PRIVATE chess_core Qt6::Widgets Qt6::Svg)
+target_compile_definitions(Xake PRIVATE XAKE_VERSION="${PROJECT_VERSION}")
 
 set_target_properties(Xake PROPERTIES
     WIN32_EXECUTABLE TRUE
     MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
 )
 
 qt_finalize_executable(Xake)
+
+install(TARGETS Xake
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+qt_generate_deploy_app_script(
+    TARGET Xake
+    OUTPUT_SCRIPT xake_deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${xake_deploy_script})

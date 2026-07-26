@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 
+#include "app_settings.h"
 #include "single_game_dialog.h"
 #include "history_repository.h"
 #include "opening_book.h"
@@ -12,6 +13,7 @@
 #include "uci_client.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -32,6 +34,7 @@
 #include <QPixmap>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSettings>
 #include <QString>
 #include <QStyle>
 #include <QSvgRenderer>
@@ -850,6 +853,8 @@ MainWindow::MainWindow(QWidget *parent)
 {
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
+    QSettings settings;
+    m_state = loadAppState(settings);
     setColorIndicator(ui->labelWhiteTime, WHITE);
     setColorIndicator(ui->labelBlackTime, BLACK);
     configureColumnMoveList(ui->gameMovesText);
@@ -923,10 +928,15 @@ MainWindow::MainWindow(QWidget *parent)
     if (ui->actionSingleGame) {
         connect(ui->actionSingleGame, &QAction::triggered, this, [this]() {
             SingleGameDialog dialog(this);
+            if (m_state.hasLastMatch) {
+                dialog.setConfig(m_state.lastMatch);
+            }
             if (dialog.exec() == QDialog::Accepted) {
                 const MatchConfig config = dialog.config();
                 m_state.lastMatch = config;
                 m_state.hasLastMatch = true;
+                QSettings settings;
+                saveLastMatch(settings, config);
                 startMatch(config, nullptr);
             }
         });
@@ -935,13 +945,22 @@ MainWindow::MainWindow(QWidget *parent)
     if (ui->actionTournament) {
         connect(ui->actionTournament, &QAction::triggered, this, [this]() {
             TournamentDialog dialog(this);
+            if (m_state.hasLastTournament) {
+                dialog.setConfig(m_state.lastTournament);
+            }
             if (dialog.exec() == QDialog::Accepted) {
                 const TournamentConfig config = dialog.config();
                 m_state.lastTournament = config;
                 m_state.hasLastTournament = true;
+                QSettings settings;
+                saveLastTournament(settings, config);
                 startMatch(config.match, &config);
             }
         });
+    }
+    if (ui->actionAbout) {
+        connect(ui->actionAbout, &QAction::triggered,
+                this, &MainWindow::showAboutDialog);
     }
 
     connect(m_gameController, &GameController::positionChanged, this,
@@ -2015,6 +2034,20 @@ void MainWindow::openDebugWindow()
     });
     updateDebugLogPath();
     dialog->show();
+}
+
+void MainWindow::showAboutDialog()
+{
+    QMessageBox::about(
+        this,
+        tr("About Xake"),
+        tr("<h2>Xake %1</h2>"
+           "<p>Chess GUI and tournament manager for human players and "
+           "UCI-compatible engines.</p>"
+           "<p>Licensed under GNU GPL version 3.</p>"
+           "<p>Built with Qt %2.</p>")
+            .arg(QApplication::applicationVersion(),
+                 QString::fromLatin1(qVersion())));
 }
 
 void MainWindow::updateDebugLogPath()

@@ -17,6 +17,7 @@ public:
     ~TournamentDialog();
 
     TournamentConfig config() const;
+    void setConfig(const TournamentConfig& config);
 
 public slots:
     void accept() override;

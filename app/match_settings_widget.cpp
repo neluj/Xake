@@ -139,6 +139,71 @@ GameConfig MatchSettingsWidget::gameConfig() const
     return config;
 }
 
+void MatchSettingsWidget::setConfig(const MatchConfig& config)
+{
+    const auto setPlayer = [this](const PlayerConfig& player,
+                                  QComboBox *typeCombo,
+                                  QStackedWidget *stack,
+                                  QLineEdit *nameEdit,
+                                  QLineEdit *enginePathEdit,
+                                  QPushButton *browseButton) {
+        typeCombo->setCurrentIndex(
+            player.type == PlayerType::Engine ? 1 : 0);
+        nameEdit->setText(player.name);
+        enginePathEdit->setText(player.enginePath);
+        applyPlayerType(typeCombo, stack, nameEdit, enginePathEdit,
+                        browseButton);
+        if (!player.enginePath.isEmpty()) {
+            m_lastEngineDir = QFileInfo(player.enginePath).absolutePath();
+        }
+    };
+
+    setPlayer(config.player1,
+              ui->player1TypeCombo,
+              ui->player1Stacked,
+              ui->player1NameEdit,
+              ui->player1EnginePathEdit,
+              ui->player1BrowseButton);
+    setPlayer(config.player2,
+              ui->player2TypeCombo,
+              ui->player2Stacked,
+              ui->player2NameEdit,
+              ui->player2EnginePathEdit,
+              ui->player2BrowseButton);
+
+    const GameConfig& game = config.game;
+    int timeControlIndex = ui->timeControlCombo->findText(
+        game.timeControl,
+        Qt::MatchFixedString);
+    if (timeControlIndex < 0) {
+        timeControlIndex = ui->timeControlCombo->findText(
+            QStringLiteral("Custom"),
+            Qt::MatchFixedString);
+    }
+    if (timeControlIndex >= 0) {
+        if (ui->timeControlCombo->itemText(timeControlIndex).compare(
+                QStringLiteral("Custom"), Qt::CaseInsensitive) == 0) {
+            m_customBaseTimeSeconds = game.baseTimeSeconds;
+            m_customIncrementSeconds = game.incrementSeconds;
+            m_customMovesToGo = game.movesToGo;
+        }
+        ui->timeControlCombo->setCurrentIndex(timeControlIndex);
+        applyTimeControlSelection();
+    }
+
+    ui->useOpeningFileCheckBox->setChecked(game.useOpeningFile);
+    ui->openingFileEdit->setText(game.openingFilePath);
+    ui->useStartPosCheckBox->setChecked(game.useStartPos);
+    ui->startPositionEdit->setText(
+        game.useStartPos ? QStringLiteral("startpos")
+                         : game.startPosition);
+    if (!game.openingFilePath.isEmpty()) {
+        m_lastOpeningDir =
+            QFileInfo(game.openingFilePath).absolutePath();
+    }
+    applyOpeningFileSelection();
+}
+
 void MatchSettingsWidget::applyOpeningFileSelection()
 {
     if (!ui || !ui->useOpeningFileCheckBox || !ui->useStartPosCheckBox
