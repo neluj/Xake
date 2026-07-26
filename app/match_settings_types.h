@@ -36,5 +36,4 @@ struct TournamentConfig {
     int rounds = 0;
     int gamesPerPairing = 0;
     int maxMoves = 0;
-    bool randomizeColors = false;
 };

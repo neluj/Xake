@@ -48,7 +48,6 @@ QJsonObject tournamentToJson(const TournamentConfig& tournament)
     obj["rounds"] = tournament.rounds;
     obj["gamesPerPairing"] = tournament.gamesPerPairing;
     obj["maxMoves"] = tournament.maxMoves;
-    obj["randomizeColors"] = tournament.randomizeColors;
     obj["match"] = matchToJson(tournament.match);
     return obj;
 }

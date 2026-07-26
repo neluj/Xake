@@ -8,7 +8,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QRandomGenerator>
 #include <QSaveFile>
 #include <QTimer>
 
@@ -477,10 +476,6 @@ const OpeningEntry& TournamentRunner::openingForCurrentGame() const
 
 bool TournamentRunner::colorsAreSwappedForCurrentGame() const
 {
-    if (m_config.randomizeColors) {
-        return QRandomGenerator::global()->bounded(2) == 1;
-    }
-
     return (m_currentGameNumber % 2) == 0;
 }
 
@@ -545,7 +540,6 @@ bool TournamentRunner::writeReport(QString* errorOut) const
     tournament["rounds"] = m_config.rounds;
     tournament["gamesPerPairing"] = m_config.gamesPerPairing;
     tournament["maxMoves"] = m_config.maxMoves;
-    tournament["randomizeColors"] = m_config.randomizeColors;
     tournament["player1"] = playerToJson(m_config.match.player1);
     tournament["player2"] = playerToJson(m_config.match.player2);
 

@@ -44,7 +44,6 @@ void TournamentDialog::accept()
     config.rounds = ui->roundsSpin->value();
     config.gamesPerPairing = ui->gamesPerPairingSpin->value();
     config.maxMoves = ui->maxMovesSpin->value();
-    config.randomizeColors = ui->randomizeColorsCheck->isChecked();
 
     normalizeTournamentConfig(config);
     const ValidationError error = validateTournamentConfig(config);
