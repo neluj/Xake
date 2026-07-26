@@ -52,6 +52,16 @@ target_link_libraries(storage_paths_tests PRIVATE Qt6::Test)
 
 add_test(NAME storage_paths_tests COMMAND storage_paths_tests)
 
+add_executable(history_repository_tests
+    test_history_repository.cpp
+    ${CMAKE_SOURCE_DIR}/app/history_repository.cpp
+)
+
+target_include_directories(history_repository_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(history_repository_tests PRIVATE Qt6::Test)
+
+add_test(NAME history_repository_tests COMMAND history_repository_tests)
+
 add_executable(session_record_tests
     test_session_record.cpp
     ${CMAKE_SOURCE_DIR}/app/session_record.cpp

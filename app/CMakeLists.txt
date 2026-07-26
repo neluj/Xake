@@ -4,6 +4,8 @@ set(APP_SOURCES
     app_state.h
     game_controller.cpp
     game_controller.h
+    history_repository.cpp
+    history_repository.h
     match_settings_widget.cpp
     match_settings_widget.h
     match_settings_widget.ui
