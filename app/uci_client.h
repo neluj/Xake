@@ -41,7 +41,7 @@ public:
 signals:
     void engineStarted();
     void engineExited(int exitCode, QProcess::ExitStatus status);
-    void engineError(const QString& line);
+    void standardErrorOutput(const QString& line);
     void processError(QProcess::ProcessError error, const QString& detail);
     void engineOutput(const QString& line);
     void communication(const QString& prefix, const QString& line);

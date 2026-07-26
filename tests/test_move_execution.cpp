@@ -116,7 +116,7 @@ private slots:
     void controllerRejectsMoveAfterTimeout();
     void controllerStopsWhenEngineExits();
     void controllerReportsEngineCrash();
-    void controllerReportsEngineStandardError();
+    void controllerKeepsRunningOnEngineStandardError();
     void controllerReportsEngineWriteError();
     void controllerReportsMalformedEngineBestMove();
     void controllerReportsIllegalEngineBestMove();
@@ -429,7 +429,7 @@ void TestMoveExecution::controllerReportsEngineCrash()
     QVERIFY(!controller.isActive());
 }
 
-void TestMoveExecution::controllerReportsEngineStandardError()
+void TestMoveExecution::controllerKeepsRunningOnEngineStandardError()
 {
     GameController controller;
     QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
@@ -437,15 +437,18 @@ void TestMoveExecution::controllerReportsEngineStandardError()
     prepareWhiteEngineSearch(controller);
 
     QSignalSpy failureSpy(&controller, &GameController::engineFailureOccurred);
-    controller.handleEngineError(EngineSide::White,
-                                 QStringLiteral("fatal protocol error"));
+    QSignalSpy outputSpy(&controller, &GameController::engineOutputReceived);
+    controller.handleEngineStandardError(
+        EngineSide::White,
+        QStringLiteral("diagnostic message"));
 
-    QCOMPARE(failureSpy.count(), 1);
-    const QList<QVariant> failure = failureSpy.takeFirst();
-    QCOMPARE(failure[0].value<EngineFailure>(),
-             EngineFailure::StandardErrorOutput);
-    QVERIFY(failure[2].toString().contains(QStringLiteral("fatal protocol error")));
-    QVERIFY(!controller.isActive());
+    QCOMPARE(failureSpy.count(), 0);
+    QCOMPARE(outputSpy.count(), 1);
+    QCOMPARE(outputSpy.takeFirst()[1].toString(),
+             QStringLiteral("[stderr] diagnostic message"));
+    QCOMPARE(controller.m_whiteSession.lastErrorLine,
+             QStringLiteral("diagnostic message"));
+    QVERIFY(controller.isActive());
 }
 
 void TestMoveExecution::controllerReportsEngineWriteError()
@@ -570,8 +573,6 @@ void TestMoveExecution::engineFailureMessages_data()
         << EngineFailure::UciHandshakeTimeout << QStringLiteral("uciok");
     QTest::newRow("ready timeout")
         << EngineFailure::ReadyHandshakeTimeout << QStringLiteral("readyok");
-    QTest::newRow("stderr")
-        << EngineFailure::StandardErrorOutput << QStringLiteral("stderr");
     QTest::newRow("crash")
         << EngineFailure::ProcessCrashed << QStringLiteral("process crashed");
     QTest::newRow("unexpected exit")

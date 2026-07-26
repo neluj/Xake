@@ -28,7 +28,6 @@ enum class EngineFailure {
     StartFailed,
     UciHandshakeTimeout,
     ReadyHandshakeTimeout,
-    StandardErrorOutput,
     ProcessCrashed,
     UnexpectedExit,
     ReadError,
@@ -155,7 +154,7 @@ private:
     void startSideTimer(Xake::Color side);
     void stopSideTimer(Xake::Color side);
     void startTurnIfReady();
-    void handleEngineError(EngineSide side, const QString& line);
+    void handleEngineStandardError(EngineSide side, const QString& line);
     void handleEngineProcessError(EngineSide side,
                                   QProcess::ProcessError error,
                                   const QString& detail);

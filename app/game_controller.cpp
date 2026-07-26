@@ -92,9 +92,9 @@ GameController::GameController(QObject *parent)
         Q_UNUSED(ponder);
         handleBestMove(EngineSide::White, move);
     });
-    connect(m_whiteSession.client, &UciClient::engineError, this,
+    connect(m_whiteSession.client, &UciClient::standardErrorOutput, this,
             [this](const QString& line) {
-        handleEngineError(EngineSide::White, line);
+        handleEngineStandardError(EngineSide::White, line);
     });
     connect(m_whiteSession.client, &UciClient::processError, this,
             [this](QProcess::ProcessError error, const QString& detail) {
@@ -124,9 +124,9 @@ GameController::GameController(QObject *parent)
         Q_UNUSED(ponder);
         handleBestMove(EngineSide::Black, move);
     });
-    connect(m_blackSession.client, &UciClient::engineError, this,
+    connect(m_blackSession.client, &UciClient::standardErrorOutput, this,
             [this](const QString& line) {
-        handleEngineError(EngineSide::Black, line);
+        handleEngineStandardError(EngineSide::Black, line);
     });
     connect(m_blackSession.client, &UciClient::processError, this,
             [this](QProcess::ProcessError error, const QString& detail) {
@@ -727,7 +727,8 @@ void GameController::handleReadyOk(EngineSide side)
     }
 }
 
-void GameController::handleEngineError(EngineSide side, const QString& line)
+void GameController::handleEngineStandardError(EngineSide side,
+                                               const QString& line)
 {
     EngineSession& session = sessionForSide(side);
     if (!session.active) {
@@ -737,9 +738,8 @@ void GameController::handleEngineError(EngineSide side, const QString& line)
     const QString trimmed = line.trimmed();
     if (!trimmed.isEmpty()) {
         session.lastErrorLine = trimmed;
-        reportEngineFailure(side,
-                            EngineFailure::StandardErrorOutput,
-                            trimmed);
+        emit engineOutputReceived(
+            side, tr("[stderr] %1").arg(trimmed));
     }
 }
 
@@ -942,9 +942,6 @@ QString GameController::engineFailureMessage(EngineSide side,
     case EngineFailure::ReadyHandshakeTimeout:
         return tr("%1 did not answer \"isready\" with \"readyok\" within the timeout.")
             .arg(engine);
-    case EngineFailure::StandardErrorOutput:
-        return tr("%1 reported an error on stderr: %2.")
-            .arg(engine, cleanDetail.isEmpty() ? tr("no details") : cleanDetail);
     case EngineFailure::ProcessCrashed:
         return tr("%1 process crashed (exit code %2).%3")
             .arg(engine)

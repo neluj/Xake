@@ -251,7 +251,7 @@ void UciClient::onReadyReadStandardError()
             line.chop(1);
         }
         logLine("!!", QString::fromUtf8(line));
-        emit engineError(QString::fromUtf8(line));
+        emit standardErrorOutput(QString::fromUtf8(line));
     }
 }
 
