@@ -109,11 +109,13 @@ private slots:
     void controllerRejectsPseudoIllegalMove();
     void controllerAppliesPromotionMove();
     void controllerStopsOnCheckmate();
+    void controllerStopsBeforeResultNotification();
     void controllerStopsOnThreefoldRepetition();
     void controllerStopsOnFiftyMoveRule();
     void controllerStopsOnInsufficientMaterialAfterCapture();
     void controllerStopsOnTimeout();
     void controllerRejectsMoveAfterTimeout();
+    void controllerFreezesClockWhenStopped();
     void controllerStopsWhenEngineExits();
     void controllerReportsEngineCrash();
     void controllerKeepsRunningOnEngineStandardError();
@@ -269,6 +271,34 @@ void TestMoveExecution::controllerStopsOnCheckmate()
              QStringLiteral("7k/6Q1/6K1/8/8/8/8/8 b - - 1 1"));
 }
 
+void TestMoveExecution::controllerStopsBeforeResultNotification()
+{
+    const QString fen = QStringLiteral(
+        "7k/5Q2/6K1/8/8/8/8/8 w - - 0 1");
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(fen), fen.toStdString()));
+
+    QStringList events;
+    connect(&controller, &GameController::gameFinished, this,
+            [&events](const GameResult&) {
+        events.append(QStringLiteral("finished"));
+    });
+    connect(&controller, &GameController::matchStopped, this,
+            [&events]() {
+        events.append(QStringLiteral("stopped"));
+    });
+    connect(&controller, &GameController::errorOccurred, this,
+            [&events](const QString&, const QString&) {
+        events.append(QStringLiteral("notification"));
+    });
+
+    QVERIFY(controller.applyHumanMove(makeCandidate('f', '7', 'g', '7')));
+    QCOMPARE(events,
+             QStringList({QStringLiteral("finished"),
+                          QStringLiteral("stopped"),
+                          QStringLiteral("notification")}));
+}
+
 void TestMoveExecution::controllerStopsOnThreefoldRepetition()
 {
     const QString fen = QStringLiteral("4k1n1/8/8/8/8/8/8/1N2K3 w - - 0 1");
@@ -380,6 +410,22 @@ void TestMoveExecution::controllerRejectsMoveAfterTimeout()
     QCOMPARE(errorSpy.count(), 1);
     QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
              QString::fromLatin1(kStartFen));
+}
+
+void TestMoveExecution::controllerFreezesClockWhenStopped()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(
+        timedHumanVsHumanConfig(QString::fromLatin1(kStartFen), 2),
+        kStartFen));
+
+    QTest::qWait(30);
+    controller.stopMatch();
+    const qint64 stoppedTime = controller.remainingTimeMs(WHITE);
+
+    QVERIFY(stoppedTime < 2000);
+    QTest::qWait(30);
+    QCOMPARE(controller.remainingTimeMs(WHITE), stoppedTime);
 }
 
 void TestMoveExecution::controllerStopsWhenEngineExits()

@@ -255,9 +255,11 @@ void GameController::stopMatch()
     if (m_flagTimer) {
         m_flagTimer->stop();
     }
+    if (m_timerRunning) {
+        stopSideTimer(m_timedSide);
+    }
     m_active = false;
     stopEngines();
-    m_timerRunning = false;
     const bool wasPaused = m_paused;
     m_paused = false;
     if (wasPaused) {
@@ -1131,8 +1133,8 @@ bool GameController::finishGame(GameOutcome outcome,
                                 const QString& message)
 {
     emit gameFinished(GameResult{outcome, termination, message});
-    emit errorOccurred(title, message);
     stopMatch();
+    emit errorOccurred(title, message);
     return true;
 }
 
@@ -1153,8 +1155,8 @@ bool GameController::finishGameIfNoLegalMoves()
     if (!kingBitboard) {
         const QString message = tr("Position has no king for the side to move.");
         emit gameAborted(tr("Invalid position"), message);
-        emit errorOccurred(tr("Invalid position"), message);
         stopMatch();
+        emit errorOccurred(tr("Invalid position"), message);
         return true;
     }
 
