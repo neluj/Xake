@@ -643,6 +643,12 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(m_gameController, &GameController::matchStopped, this, [this]() {
+        if (m_hasActiveMatchRecord) {
+            finalizeMatchRecord(QStringLiteral("stopped"),
+                                nullptr,
+                                tr("Game stopped"),
+                                tr("The game was stopped before completion."));
+        }
         if (m_clockUiTimer) {
             m_clockUiTimer->stop();
         }
@@ -675,6 +681,18 @@ MainWindow::MainWindow(QWidget *parent)
             return;
         }
         QMessageBox::warning(this, title, message);
+    });
+
+    connect(m_gameController, &GameController::gameFinished, this,
+            [this](const GameResult& result) {
+        finalizeMatchRecord(QStringLiteral("completed"), &result);
+    });
+    connect(m_gameController, &GameController::gameAborted, this,
+            [this](const QString& title, const QString& message) {
+        finalizeMatchRecord(QStringLiteral("aborted"),
+                            nullptr,
+                            title,
+                            message);
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentStarted, this,
@@ -877,6 +895,7 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         record.sessionType = sessionType;
         record.sessionTag = sessionTag;
         record.startTimeIso = QDateTime::currentDateTime().toString(Qt::ISODate);
+        record.updatedAtIso = record.startTimeIso;
         record.logDir = sessionDir;
         record.match = config;
         record.startFen = firstOpening.startFen;
@@ -894,9 +913,16 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         if (!writeSessionRecord(record, recordPath, &errorDetail)) {
             warnSessionRecordFailure(this, errorDetail);
         }
+        if (!tournament) {
+            m_matchRecord = record;
+            m_matchRecordPath = recordPath;
+            m_hasActiveMatchRecord = true;
+        }
     }
 
     if (tournament) {
+        m_hasActiveMatchRecord = false;
+        m_matchRecordPath.clear();
         const bool started =
             m_tournamentRunner->start(*tournament, openings, sessionDir, sessionTag);
         if (started) {
@@ -922,8 +948,45 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         clearTournamentPanel();
         setTournamentTabActive(false);
         updateSessionControls();
+    } else if (m_hasActiveMatchRecord) {
+        finalizeMatchRecord(QStringLiteral("aborted"),
+                            nullptr,
+                            tr("Game start failed"),
+                            tr("The game could not be started."));
     }
     return started;
+}
+
+void MainWindow::finalizeMatchRecord(const QString& status,
+                                     const GameResult* result,
+                                     const QString& abortTitle,
+                                     const QString& abortMessage)
+{
+    if (!m_hasActiveMatchRecord || m_matchRecordPath.isEmpty()) {
+        return;
+    }
+
+    const QString timestamp = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
+    m_matchRecord.status = status;
+    m_matchRecord.updatedAtIso = timestamp;
+    m_matchRecord.finishedAtIso = timestamp;
+    m_matchRecord.moves = m_gameController->moveHistoryUci();
+    m_matchRecord.finalFen =
+        QString::fromStdString(m_gameController->currentPosition().get_FEN());
+    m_matchRecord.whiteTimeMs = m_gameController->remainingTimeMs(WHITE);
+    m_matchRecord.blackTimeMs = m_gameController->remainingTimeMs(BLACK);
+    m_matchRecord.hasResult = result != nullptr;
+    if (result) {
+        m_matchRecord.result = *result;
+    }
+    m_matchRecord.abortTitle = abortTitle;
+    m_matchRecord.abortMessage = abortMessage;
+
+    QString errorDetail;
+    if (!writeSessionRecord(m_matchRecord, m_matchRecordPath, &errorDetail)) {
+        warnSessionRecordFailure(this, errorDetail);
+    }
+    m_hasActiveMatchRecord = false;
 }
 
 bool MainWindow::stopActiveSession()

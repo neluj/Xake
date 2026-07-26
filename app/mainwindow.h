@@ -3,6 +3,7 @@
 
 #include "app_state.h"
 #include "game_controller.h"
+#include "session_record.h"
 
 #include <QMainWindow>
 #include <QPointer>
@@ -58,6 +59,10 @@ private:
     void openDebugWindow();
     void updateClockUi();
     void updateSideToMoveLabel(const Xake::Position& position);
+    void finalizeMatchRecord(const QString& status,
+                             const GameResult* result = nullptr,
+                             const QString& abortTitle = QString(),
+                             const QString& abortMessage = QString());
 
     Ui::MainWindow *ui;
     UciClient *m_uciClient;
@@ -74,5 +79,8 @@ private:
     QPointer<QLabel> m_debugPathLabel;
     QPointer<QPlainTextEdit> m_debugText;
     QPointer<QPushButton> m_debugOpenLogButton;
+    SessionRecord m_matchRecord;
+    QString m_matchRecordPath;
+    bool m_hasActiveMatchRecord = false;
 };
 #endif // MAINWINDOW_H

@@ -52,6 +52,16 @@ target_link_libraries(storage_paths_tests PRIVATE Qt6::Test)
 
 add_test(NAME storage_paths_tests COMMAND storage_paths_tests)
 
+add_executable(session_record_tests
+    test_session_record.cpp
+    ${CMAKE_SOURCE_DIR}/app/session_record.cpp
+)
+
+target_include_directories(session_record_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(session_record_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME session_record_tests COMMAND session_record_tests)
+
 add_executable(opening_book_tests
     test_opening_book.cpp
     ${CMAKE_SOURCE_DIR}/app/opening_book.cpp
