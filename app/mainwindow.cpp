@@ -568,20 +568,6 @@ MainWindow::MainWindow(QWidget *parent)
             m_clockUiTimer->stop();
         }
         updateClockUi();
-        if (ui && ui->labelSideToMove) {
-            ui->labelSideToMove->clear();
-        }
-        if (ui && ui->labelWhitePlayer && ui->labelBlackPlayer) {
-            ui->labelWhitePlayer->clear();
-            ui->labelBlackPlayer->clear();
-        }
-        if (ui && ui->gameMovesText) {
-            ui->gameMovesText->clear();
-        }
-        m_currentOpeningName.clear();
-        m_currentOpeningIndex = 0;
-        m_currentOpeningCount = 0;
-        updateGameOpeningLabel();
     });
 
     connect(m_gameController, &GameController::errorOccurred, this,
@@ -655,7 +641,6 @@ MainWindow::MainWindow(QWidget *parent)
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(message);
         }
-        setTournamentTabActive(false);
         QMessageBox::information(this, tr("Tournament finished"), message);
     });
 
@@ -669,7 +654,6 @@ MainWindow::MainWindow(QWidget *parent)
         if (ui && ui->statusbar) {
             ui->statusbar->showMessage(tr("%1: %2").arg(title, message));
         }
-        setTournamentTabActive(false);
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentReportError, this,
@@ -776,12 +760,17 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
     runtimeConfig.game.openingFilePath.clear();
     runtimeConfig.game.useStartPos = false;
     runtimeConfig.game.startPosition = firstOpening.startFen;
-    return m_gameController->startMatch(runtimeConfig,
-                                        firstOpening.startFen.toStdString(),
-                                        sessionDir,
-                                        sessionTag,
-                                        0,
-                                        firstOpening.movesUci);
+    const bool started = m_gameController->startMatch(runtimeConfig,
+                                                      firstOpening.startFen.toStdString(),
+                                                      sessionDir,
+                                                      sessionTag,
+                                                      0,
+                                                      firstOpening.movesUci);
+    if (started) {
+        clearTournamentPanel();
+        setTournamentTabActive(false);
+    }
+    return started;
 }
 
 void MainWindow::setTournamentTabActive(bool active)
@@ -801,6 +790,30 @@ void MainWindow::setTournamentTabActive(bool active)
     ui->tabWidget->setTabEnabled(index, active);
     if (active) {
         ui->tabWidget->setCurrentIndex(index);
+    }
+}
+
+void MainWindow::clearTournamentPanel()
+{
+    if (!ui) {
+        return;
+    }
+
+    if (ui->labelTournamentStatus) {
+        ui->labelTournamentStatus->setText(tr("No tournament in progress"));
+    }
+    if (ui->labelTournamentOpening) {
+        ui->labelTournamentOpening->setText(tr("Opening: -"));
+        ui->labelTournamentOpening->setToolTip(QString());
+    }
+    if (ui->labelTournamentInfo) {
+        ui->labelTournamentInfo->clear();
+    }
+    if (ui->tournamentStandingsText) {
+        ui->tournamentStandingsText->clear();
+    }
+    if (ui->tournamentHistoryText) {
+        ui->tournamentHistoryText->clear();
     }
 }
 

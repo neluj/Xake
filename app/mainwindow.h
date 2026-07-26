@@ -34,6 +34,7 @@ private:
     void configureEngine();
     bool startMatch(const MatchConfig& config, const TournamentConfig* tournament);
     void setTournamentTabActive(bool active);
+    void clearTournamentPanel();
     void resetTournamentPanel(int totalGames);
     void updateTournamentStandings();
     void updateTournamentHistory();
