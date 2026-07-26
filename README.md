@@ -112,7 +112,7 @@ For release packaging and clean-environment checks, see
 ## Known Limitations
 
 - The packaged release currently targets Windows x86-64 only.
-- Tournaments contain two participants; Swiss and multi-engine pairing are not
+- Tournaments contain two participants; multi-engine pairing is not
   implemented.
 - UCI option discovery is displayed but there is no general engine-option
   editor. Hash is the only option configured directly.

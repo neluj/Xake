@@ -37,12 +37,6 @@ void TournamentDialog::setConfig(const TournamentConfig& config)
     if (ui->matchSettingsWidget) {
         ui->matchSettingsWidget->setConfig(config.match);
     }
-    const int typeIndex =
-        ui->tournamentTypeCombo->findText(config.tournamentType,
-                                          Qt::MatchFixedString);
-    if (typeIndex >= 0) {
-        ui->tournamentTypeCombo->setCurrentIndex(typeIndex);
-    }
     ui->roundsSpin->setValue(config.rounds);
     ui->gamesPerPairingSpin->setValue(config.gamesPerPairing);
     ui->maxMovesSpin->setValue(config.maxMoves);
@@ -59,7 +53,7 @@ void TournamentDialog::accept()
     config.match.player1 = ui->matchSettingsWidget->player1Config();
     config.match.player2 = ui->matchSettingsWidget->player2Config();
     config.match.game = ui->matchSettingsWidget->gameConfig();
-    config.tournamentType = ui->tournamentTypeCombo->currentText().trimmed();
+    config.tournamentType = QStringLiteral("Round-robin");
     config.rounds = ui->roundsSpin->value();
     config.gamesPerPairing = ui->gamesPerPairingSpin->value();
     config.maxMoves = ui->maxMovesSpin->value();

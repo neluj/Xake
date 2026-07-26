@@ -69,6 +69,7 @@ ValidationError validateMatchConfig(const MatchConfig &config)
 void normalizeTournamentConfig(TournamentConfig &config)
 {
     normalizeMatchConfig(config.match);
+    config.tournamentType = QStringLiteral("Round-robin");
 }
 
 ValidationError validateTournamentConfig(const TournamentConfig &config)

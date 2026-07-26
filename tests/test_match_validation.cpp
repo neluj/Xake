@@ -14,6 +14,7 @@ private slots:
     void validateMissingEngine();
     void validateMissingStartPosition();
     void validateInvalidFen();
+    void normalizeTournamentType();
     void validateTournamentFields();
     void validateOpeningFile();
     void validMatchConfig();
@@ -86,6 +87,16 @@ void TestMatchValidation::validateInvalidFen()
 
     const ValidationError error = validateMatchConfig(config);
     QCOMPARE(error, ValidationError::InvalidStartPosition);
+}
+
+void TestMatchValidation::normalizeTournamentType()
+{
+    TournamentConfig config;
+    config.tournamentType = QStringLiteral("Swiss");
+
+    normalizeTournamentConfig(config);
+
+    QCOMPARE(config.tournamentType, QStringLiteral("Round-robin"));
 }
 
 void TestMatchValidation::validateTournamentFields()
