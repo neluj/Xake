@@ -2,6 +2,7 @@
 
 #include "match_settings_validation.h"
 #include "movegen.h"
+#include "storage_paths.h"
 #include "uci_client.h"
 
 #include <QDateTime>
@@ -595,8 +596,11 @@ void GameController::prepareCommunicationLog()
         return;
     }
 
+    const QString tag = m_logTag.isEmpty()
+        ? QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss"))
+        : m_logTag;
     const QString effectiveLogDir = m_logDir.isEmpty()
-        ? QDir::current().filePath(QStringLiteral("logs"))
+        ? defaultSessionDir(tag, QStringLiteral("match"))
         : m_logDir;
     const QString logPath = QDir(effectiveLogDir)
         .filePath(QStringLiteral("uci_communication.log"));
@@ -633,9 +637,6 @@ void GameController::prepareCommunicationLog()
         return;
     }
 
-    const QString tag = m_logTag.isEmpty()
-        ? QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss"))
-        : m_logTag;
     writeCommunicationLog(QStringLiteral("Session"),
                           QStringLiteral("##"),
                           QStringLiteral("match %1 started").arg(tag));

@@ -24,6 +24,8 @@ set(APP_SOURCES
     tournament_runner.h
     session_record.cpp
     session_record.h
+    storage_paths.cpp
+    storage_paths.h
     main.cpp
     mainwindow.cpp
     mainwindow.h

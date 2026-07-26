@@ -42,6 +42,16 @@ target_link_libraries(board_widget_tests PRIVATE
 
 add_test(NAME board_widget_tests COMMAND board_widget_tests)
 
+add_executable(storage_paths_tests
+    test_storage_paths.cpp
+    ${CMAKE_SOURCE_DIR}/app/storage_paths.cpp
+)
+
+target_include_directories(storage_paths_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(storage_paths_tests PRIVATE Qt6::Test)
+
+add_test(NAME storage_paths_tests COMMAND storage_paths_tests)
+
 add_executable(opening_book_tests
     test_opening_book.cpp
     ${CMAKE_SOURCE_DIR}/app/opening_book.cpp
@@ -56,6 +66,7 @@ add_executable(move_execution_tests
     test_move_execution.cpp
     ${CMAKE_SOURCE_DIR}/app/game_controller.cpp
     ${CMAKE_SOURCE_DIR}/app/match_settings_validation.cpp
+    ${CMAKE_SOURCE_DIR}/app/storage_paths.cpp
     ${CMAKE_SOURCE_DIR}/app/uci_client.cpp
 )
 
@@ -68,6 +79,7 @@ add_executable(tournament_runner_tests
     test_tournament_runner.cpp
     ${CMAKE_SOURCE_DIR}/app/game_controller.cpp
     ${CMAKE_SOURCE_DIR}/app/match_settings_validation.cpp
+    ${CMAKE_SOURCE_DIR}/app/storage_paths.cpp
     ${CMAKE_SOURCE_DIR}/app/tournament_runner.cpp
     ${CMAKE_SOURCE_DIR}/app/uci_client.cpp
 )

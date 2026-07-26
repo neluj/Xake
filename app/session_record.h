@@ -21,7 +21,6 @@ struct SessionRecord {
 };
 
 QString sessionTagNow();
-QString defaultSessionDir(const QString& sessionTag, const QString& sessionType);
 bool writeSessionRecord(const SessionRecord& record,
                         const QString& filePath,
                         QString* errorOut = nullptr);

@@ -4,6 +4,7 @@
 #include "single_game_dialog.h"
 #include "opening_book.h"
 #include "session_record.h"
+#include "storage_paths.h"
 #include "tournament_dialog.h"
 #include "tournament_runner.h"
 #include "uci_client.h"

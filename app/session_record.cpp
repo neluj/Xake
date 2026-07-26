@@ -59,13 +59,6 @@ QString sessionTagNow()
     return QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz");
 }
 
-QString defaultSessionDir(const QString& sessionTag, const QString& sessionType)
-{
-    const QString baseDir = QDir::current().filePath("logs");
-    const QString dirName = QString("%1_%2").arg(sessionTag, sessionType);
-    return QDir(baseDir).filePath(dirName);
-}
-
 bool writeSessionRecord(const SessionRecord& record,
                         const QString& filePath,
                         QString* errorOut)
