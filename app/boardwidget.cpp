@@ -1,6 +1,7 @@
 #include "boardwidget.h"
 
 #include "move.h"
+#include "movegen.h"
 
 #include <QColor>
 #include <QMenu>
@@ -39,22 +40,6 @@ int pieceSpriteColumn(Piece piece)
         return 0;
     default:
         return -1;
-    }
-}
-
-SpecialMove promotionMove(PieceType pieceType)
-{
-    switch (pieceType) {
-    case KNIGHT:
-        return PROMOTION_KNIGHT;
-    case BISHOP:
-        return PROMOTION_BISHOP;
-    case ROOK:
-        return PROMOTION_ROOK;
-    case QUEEN:
-        return PROMOTION_QUEEN;
-    default:
-        return NO_SPECIAL;
     }
 }
 
@@ -106,7 +91,7 @@ void BoardWidget::setPosition(const Xake::Position& position, Xake::Move lastMov
 {
     const Position previousPosition = m_position;
     m_position = position;
-    m_selectedSq = -1;
+    clearSelection();
 
     if (lastMove == NOMOVE) {
         stopMoveAnimation();
@@ -114,6 +99,19 @@ void BoardWidget::setPosition(const Xake::Position& position, Xake::Move lastMov
         startMoveAnimation(previousPosition, lastMove);
     }
     update();
+}
+
+void BoardWidget::setMoveInputEnabled(bool enabled)
+{
+    if (m_moveInputEnabled == enabled) {
+        return;
+    }
+
+    m_moveInputEnabled = enabled;
+    if (!enabled) {
+        clearSelection();
+        update();
+    }
 }
 
 bool BoardWidget::setFromFenString(const std::string& fen)
@@ -159,6 +157,38 @@ void BoardWidget::paintEvent(QPaintEvent *event)
         const int px = boardRect.left() + selFile * cellSize;
         const int py = boardRect.top() + (7 - selRank) * cellSize;
         painter.fillRect(QRect(px, py, cellSize, cellSize), QColor(80, 120, 200, 120));
+    }
+
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    bool paintedDestinations[SQ64_SIZE] = {};
+    const QColor targetColor(38, 122, 105, 190);
+    for (const Move move : m_legalMoves) {
+        const int destination = move_to(move);
+        if (paintedDestinations[destination]) {
+            continue;
+        }
+        paintedDestinations[destination] = true;
+
+        const int file = destination % 8;
+        const int rank = destination / 8;
+        const QRectF squareRect(boardRect.left() + file * cellSize,
+                                boardRect.top() + (7 - rank) * cellSize,
+                                cellSize,
+                                cellSize);
+        if (is_capture(move)) {
+            QPen capturePen(targetColor, qMax(2, cellSize / 12));
+            painter.setPen(capturePen);
+            painter.setBrush(Qt::NoBrush);
+            painter.drawEllipse(squareRect.adjusted(cellSize * 0.08,
+                                                    cellSize * 0.08,
+                                                    -cellSize * 0.08,
+                                                    -cellSize * 0.08));
+        } else {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(targetColor);
+            const qreal radius = qMax<qreal>(3.0, cellSize * 0.13);
+            painter.drawEllipse(squareRect.center(), radius, radius);
+        }
     }
 
     if (!m_pieceset.isNull()) {
@@ -247,6 +277,37 @@ void BoardWidget::paintEvent(QPaintEvent *event)
     }
 }
 
+void BoardWidget::selectSquare(int sq)
+{
+    clearSelection();
+
+    const Piece piece = pieceAt(m_position, sq);
+    if (piece == NO_PIECE || piece_color(piece) != m_position.get_side_to_move()) {
+        return;
+    }
+
+    m_selectedSq = sq;
+    MoveGen::MoveList moveList;
+    MoveGen::generate_pseudo_moves(m_position, moveList);
+    for (int index = 0; index < moveList.size; ++index) {
+        const Move move = moveList.moves[index];
+        if (move_from(move) != sq) {
+            continue;
+        }
+
+        Position testPosition = m_position;
+        if (testPosition.do_move(move)) {
+            m_legalMoves.append(move);
+        }
+    }
+}
+
+void BoardWidget::clearSelection()
+{
+    m_selectedSq = -1;
+    m_legalMoves.clear();
+}
+
 void BoardWidget::startMoveAnimation(const Position& previousPosition, Move move)
 {
     stopMoveAnimation();
@@ -291,65 +352,75 @@ void BoardWidget::mousePressEvent(QMouseEvent *event)
         QWidget::mousePressEvent(event);
         return;
     }
+    if (!m_moveInputEnabled) {
+        return;
+    }
 
     int sq = -1;
     if (!squareFromPoint(event->pos(), sq)) {
-        m_selectedSq = -1;
+        clearSelection();
         update();
         return;
     }
 
     if (m_selectedSq == -1) {
-        const Piece piece = pieceAt(m_position, sq);
-        if (piece == NO_PIECE || piece_color(piece) != m_position.get_side_to_move()) {
-            return;
-        }
-        m_selectedSq = sq;
+        selectSquare(sq);
         update();
         return;
     }
 
     if (m_selectedSq == sq) {
-        m_selectedSq = -1;
+        clearSelection();
         update();
+        return;
+    }
+
+    QVector<Move> destinationMoves;
+    for (const Move move : m_legalMoves) {
+        if (move_to(move) == sq) {
+            destinationMoves.append(move);
+        }
+    }
+
+    if (destinationMoves.isEmpty()) {
+        const Piece clickedPiece = pieceAt(m_position, sq);
+        if (clickedPiece != NO_PIECE
+            && piece_color(clickedPiece) == m_position.get_side_to_move()) {
+            selectSquare(sq);
+            update();
+        }
         return;
     }
 
     const Piece fromPiece = pieceAt(m_position, m_selectedSq);
     if (fromPiece == NO_PIECE) {
-        m_selectedSq = -1;
+        clearSelection();
         update();
         return;
     }
     const Color fromColor = piece_color(fromPiece);
 
-    const Piece toPiece = pieceAt(m_position, sq);
-    if (toPiece != NO_PIECE && piece_color(toPiece) == fromColor) {
-        m_selectedSq = -1;
-        update();
-        return;
-    }
-
     PieceType promoPiece = NO_PIECE_TYPE;
-    if (piece_type(fromPiece) == PAWN) {
-        const int toRank = sq / 8;
-        if ((fromColor == WHITE && toRank == 7)
-            || (fromColor == BLACK && toRank == 0)) {
-            promoPiece = promptPromotion(fromColor, event->globalPosition().toPoint());
-            if (promoPiece == NO_PIECE_TYPE) {
-                m_selectedSq = -1;
-                update();
-                return;
-            }
+    if (destinationMoves.size() > 1) {
+        promoPiece = promptPromotion(fromColor, event->globalPosition().toPoint());
+        if (promoPiece == NO_PIECE_TYPE) {
+            return;
         }
     }
 
-    const Move move = make_quiet_move(Square64(m_selectedSq),
-                                      Square64(sq),
-                                      promotionMove(promoPiece));
+    Move selectedMove = NOMOVE;
+    for (const Move move : destinationMoves) {
+        if (promoted_piece(move) == promoPiece) {
+            selectedMove = move;
+            break;
+        }
+    }
+    if (selectedMove == NOMOVE) {
+        return;
+    }
 
-    emit moveRequested(move);
-    m_selectedSq = -1;
+    emit moveRequested(selectedMove);
+    clearSelection();
     update();
 }
 

@@ -305,7 +305,6 @@ bool GameController::applyHumanMove(Move move)
 
     Move appliedMove = NOMOVE;
     if (!applyMove(move, &appliedMove)) {
-        emit errorOccurred(tr("Invalid move"), tr("Move could not be applied."));
         return false;
     }
 

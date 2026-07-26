@@ -193,7 +193,7 @@ void TestMoveExecution::controllerRejectsMoveOutsideGeneratedList()
     QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
 
     QVERIFY(!controller.applyHumanMove(makeCandidate('e', '2', 'e', '5')));
-    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 0);
     QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
              QString::fromLatin1(kStartFen));
 }
@@ -207,7 +207,7 @@ void TestMoveExecution::controllerRejectsPseudoIllegalMove()
     QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
 
     QVERIFY(!controller.applyHumanMove(makeCandidate('e', '2', 'd', '2')));
-    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 0);
     QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()), fen);
 }
 

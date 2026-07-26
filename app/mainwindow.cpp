@@ -572,6 +572,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
         updateSideToMoveLabel(position);
         updateClockUi();
+        updateSessionControls();
     });
 
     connect(m_gameController, &GameController::movePlayed, this,
@@ -1045,6 +1046,18 @@ void MainWindow::updateSessionControls()
                                     : QStyle::SP_MediaPause));
     ui->stopButton->setEnabled(active);
     ui->restartButton->setEnabled(m_lastSessionKind != SessionKind::None);
+
+    if (ui->board) {
+        bool humanTurn = gameActive && !paused;
+        if (humanTurn) {
+            const MatchConfig match = m_gameController->matchConfig();
+            const bool whiteToMove =
+                m_gameController->currentPosition().get_side_to_move() == WHITE;
+            const PlayerConfig& player = whiteToMove ? match.player1 : match.player2;
+            humanTurn = player.type == PlayerType::Human;
+        }
+        ui->board->setMoveInputEnabled(humanTurn);
+    }
 }
 
 void MainWindow::setTournamentTabActive(bool active)
