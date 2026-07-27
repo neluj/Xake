@@ -1,8 +1,16 @@
-<p align="center">
-  <img src="app/assets/xake-logo.png" alt="Xake logo" width="180">
-</p>
-
-# Xake
+<div align="center">
+  <img src="app/assets/xake-logo.png" alt="Xake logo" width="220">
+  <h3>Xake</h3>
+  <p>
+    <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/neluj/Xake"></a>
+    <a href="https://github.com/neluj/Xake/releases"><img alt="Version" src="https://img.shields.io/github/v/release/neluj/Xake?sort=semver"></a>
+    <a href="https://github.com/neluj/Xake/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/neluj/Xake/actions/workflows/ci.yml/badge.svg?branch=develop"></a>
+    <br>
+    <a href="https://en.cppreference.com/w/cpp/20"><img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B&logoColor=white"></a>
+    <a href="https://www.qt.io/product/framework"><img alt="Qt 6.7+" src="https://img.shields.io/badge/Qt-6.7%2B-41CD52?logo=qt&logoColor=white"></a>
+    <a href="https://cmake.org/"><img alt="CMake 3.16+" src="https://img.shields.io/badge/CMake-3.16%2B-064F8C?logo=cmake&logoColor=white"></a>
+  </p>
+</div>
 
 Xake 0.1.0 is a desktop chess GUI for playing games and running matches between
 UCI engines. It validates moves with its own legal move generator, manages chess
