@@ -35,6 +35,14 @@ Attribution-ShareAlike 3.0 Unported.
 The local sprite is used to render the chess pieces and is redistributed under
 the same CC BY-SA 3.0 terms. No endorsement by the original authors is implied.
 
+## Perft Regression Data
+
+`tests/data/perftsuite.epd` contains chess positions and expected node counts
+used only by the source-tree test suite. The file was originally found online
+and used by the related Akerbeltz project. Its original author, canonical
+source, and license could not be identified. Xake does not claim authorship of
+this data, and it is not installed in the Windows binary package.
+
 ## Xake Artwork
 
 The following project artwork was supplied or created for Xake and is

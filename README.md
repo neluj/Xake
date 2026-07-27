@@ -130,6 +130,23 @@ For release packaging and clean-environment checks, see
   comments, and NAGs.
 - The release archive is not code-signed.
 
+## Project History and Author
+
+Xake is developed and maintained by
+[Julen Aristondo](https://github.com/neluj). It is the continuation of the
+earlier ChessGame project, renamed to Xake in 2026.
+
+Parts of the chess core and perft tooling share code and concepts with
+[Akerbeltz](https://github.com/neluj/Akerbeltz), a UCI chess engine also
+developed by Julen Aristondo.
+
+The perft regression data in `tests/data/perftsuite.epd` was originally found
+online and used by Akerbeltz. Its original author and source could not be
+identified; Xake does not claim authorship of that data.
+
+- Source code: https://github.com/neluj/Xake
+- Issues: https://github.com/neluj/Xake/issues
+
 ## License
 
 Xake source code is licensed under GPL-3.0-only. Third-party components and

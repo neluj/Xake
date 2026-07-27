@@ -30,7 +30,9 @@ install(DIRECTORY licenses DESTINATION .)
 install(DIRECTORY docs DESTINATION .)
 
 set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
-set(CPACK_PACKAGE_VENDOR "Xake contributors")
+set(CPACK_PACKAGE_VENDOR "Julen Aristondo")
+set(CPACK_PACKAGE_CONTACT "Julen Aristondo")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/neluj/Xake")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Chess GUI and UCI engine tournament manager")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")

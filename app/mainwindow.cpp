@@ -2044,7 +2044,11 @@ void MainWindow::showAboutDialog()
         tr("<h2>Xake %1</h2>"
            "<p>Chess GUI and tournament manager for human players and "
            "UCI-compatible engines.</p>"
-           "<p>Licensed under GNU GPL version 3.</p>"
+           "<p>Developed by <b>Julen Aristondo</b>.<br>"
+           "Source code: <a href=\"https://github.com/neluj/Xake\">"
+           "github.com/neluj/Xake</a></p>"
+           "<p>Copyright &copy; 2026 Julen Aristondo.<br>"
+           "Licensed under GPL-3.0-only.</p>"
            "<p>Built with Qt %2.</p>")
             .arg(QApplication::applicationVersion(),
                  QString::fromLatin1(qVersion())));
