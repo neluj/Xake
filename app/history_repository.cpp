@@ -57,7 +57,6 @@ void parseGameSettings(const QJsonObject& game, HistoryEntry& entry)
         game.value(QStringLiteral("baseTimeSeconds")).toInt();
     entry.incrementSeconds =
         game.value(QStringLiteral("incrementSeconds")).toInt();
-    entry.movesToGo = game.value(QStringLiteral("movesToGo")).toInt();
 }
 
 JsonFile readJson(const QString& path, QStringList& warnings)

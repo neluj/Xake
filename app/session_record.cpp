@@ -25,7 +25,6 @@ QJsonObject gameToJson(const GameConfig& game)
     obj["timeControl"] = game.timeControl;
     obj["baseTimeSeconds"] = game.baseTimeSeconds;
     obj["incrementSeconds"] = game.incrementSeconds;
-    obj["movesToGo"] = game.movesToGo;
     obj["useStartPos"] = game.useStartPos;
     obj["startPosition"] = game.startPosition;
     obj["useOpeningFile"] = game.useOpeningFile;

@@ -216,13 +216,6 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="3">
-       <widget class="QSpinBox" name="movesToGoSpin">
-        <property name="maximum">
-         <number>200</number>
-        </property>
-       </widget>
-      </item>
       <item row="6" column="0">
        <widget class="QCheckBox" name="useOpeningFileCheckBox">
         <property name="text">

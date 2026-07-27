@@ -161,16 +161,13 @@ void UciClient::sendGoDepth(int depth)
 }
 
 void UciClient::sendGoWtimeBtime(int wtimeMs, int btimeMs,
-                                 int wincMs, int bincMs, int movestogo)
+                                 int wincMs, int bincMs)
 {
-    QString cmd = QString("go wtime %1 btime %2 winc %3 binc %4")
+    const QString cmd = QString("go wtime %1 btime %2 winc %3 binc %4")
         .arg(wtimeMs)
         .arg(btimeMs)
         .arg(wincMs)
         .arg(bincMs);
-    if (movestogo > 0) {
-        cmd += QString(" movestogo %1").arg(movestogo);
-    }
     sendRawCommand(cmd);
 }
 

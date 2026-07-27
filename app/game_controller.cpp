@@ -1025,7 +1025,7 @@ void GameController::sendGoForSide(EngineSide side)
         const int wtime = static_cast<int>(qMax<qint64>(0, m_whiteTimeMs));
         const int btime = static_cast<int>(qMax<qint64>(0, m_blackTimeMs));
         const int incMs = static_cast<int>(qMax<qint64>(0, m_incrementMs));
-        session.client->sendGoWtimeBtime(wtime, btime, incMs, incMs, m_config.game.movesToGo);
+        session.client->sendGoWtimeBtime(wtime, btime, incMs, incMs);
     } else {
         session.client->sendGoInfinite();
     }

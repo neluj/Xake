@@ -29,7 +29,7 @@ public:
     void sendPositionStartpos(const QStringList& moves = {});
     void sendPositionFen(const QString& fen, const QStringList& moves = {});
     void sendGoDepth(int depth);
-    void sendGoWtimeBtime(int wtimeMs, int btimeMs, int wincMs, int bincMs, int movestogo = -1);
+    void sendGoWtimeBtime(int wtimeMs, int btimeMs, int wincMs, int bincMs);
     void sendGoMovetime(int ms);
     void sendGoInfinite();
     void sendGoPerft(int depth);

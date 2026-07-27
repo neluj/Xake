@@ -636,7 +636,6 @@ bool TournamentRunner::writeReport(QString* errorOut) const
     gameSettings["timeControl"] = m_config.match.game.timeControl;
     gameSettings["baseTimeSeconds"] = m_config.match.game.baseTimeSeconds;
     gameSettings["incrementSeconds"] = m_config.match.game.incrementSeconds;
-    gameSettings["movesToGo"] = m_config.match.game.movesToGo;
     gameSettings["useOpeningFile"] = m_config.match.game.useOpeningFile;
     gameSettings["openingFilePath"] = m_config.match.game.openingFilePath;
     gameSettings["openingCount"] = m_openings.size();

@@ -26,36 +26,30 @@ void TestMatchSettingsWidget::presetDisablesManualTimeFields()
     auto *timeControlCombo = widget.findChild<QComboBox*>(QStringLiteral("timeControlCombo"));
     auto *baseTimeSpin = widget.findChild<QSpinBox*>(QStringLiteral("baseTimeSpin"));
     auto *incrementSpin = widget.findChild<QSpinBox*>(QStringLiteral("incrementSpin"));
-    auto *movesToGoSpin = widget.findChild<QSpinBox*>(QStringLiteral("movesToGoSpin"));
 
     QVERIFY(timeControlCombo);
     QVERIFY(baseTimeSpin);
     QVERIFY(incrementSpin);
-    QVERIFY(movesToGoSpin);
+    QVERIFY(!widget.findChild<QSpinBox*>(QStringLiteral("movesToGoSpin")));
 
     QCOMPARE(timeControlCombo->currentText(), QStringLiteral("Bullet"));
     QCOMPARE(baseTimeSpin->value(), 60);
     QCOMPARE(incrementSpin->value(), 0);
-    QCOMPARE(movesToGoSpin->value(), 0);
     QCOMPARE(baseTimeSpin->isEnabled(), false);
     QCOMPARE(incrementSpin->isEnabled(), false);
-    QCOMPARE(movesToGoSpin->isEnabled(), false);
 
     timeControlCombo->setCurrentText(QStringLiteral("Blitz"));
     QCOMPARE(baseTimeSpin->value(), 300);
     QCOMPARE(incrementSpin->value(), 0);
-    QCOMPARE(movesToGoSpin->value(), 0);
 
     timeControlCombo->setCurrentText(QStringLiteral("Rapid"));
     QCOMPARE(baseTimeSpin->value(), 600);
     QCOMPARE(incrementSpin->value(), 0);
-    QCOMPARE(movesToGoSpin->value(), 0);
 
     const GameConfig config = widget.gameConfig();
     QCOMPARE(config.timeControl, QStringLiteral("Rapid"));
     QCOMPARE(config.baseTimeSeconds, 600);
     QCOMPARE(config.incrementSeconds, 0);
-    QCOMPARE(config.movesToGo, 0);
 }
 
 void TestMatchSettingsWidget::customRestoresManualTimeFields()
@@ -65,40 +59,32 @@ void TestMatchSettingsWidget::customRestoresManualTimeFields()
     auto *timeControlCombo = widget.findChild<QComboBox*>(QStringLiteral("timeControlCombo"));
     auto *baseTimeSpin = widget.findChild<QSpinBox*>(QStringLiteral("baseTimeSpin"));
     auto *incrementSpin = widget.findChild<QSpinBox*>(QStringLiteral("incrementSpin"));
-    auto *movesToGoSpin = widget.findChild<QSpinBox*>(QStringLiteral("movesToGoSpin"));
 
     QVERIFY(timeControlCombo);
     QVERIFY(baseTimeSpin);
     QVERIFY(incrementSpin);
-    QVERIFY(movesToGoSpin);
 
     timeControlCombo->setCurrentText(QStringLiteral("Custom"));
     QVERIFY(baseTimeSpin->isEnabled());
     QVERIFY(incrementSpin->isEnabled());
-    QVERIFY(movesToGoSpin->isEnabled());
 
     baseTimeSpin->setValue(123);
     incrementSpin->setValue(7);
-    movesToGoSpin->setValue(18);
 
     timeControlCombo->setCurrentText(QStringLiteral("Blitz"));
     QCOMPARE(baseTimeSpin->isEnabled(), false);
     QCOMPARE(incrementSpin->isEnabled(), false);
-    QCOMPARE(movesToGoSpin->isEnabled(), false);
     QCOMPARE(baseTimeSpin->value(), 300);
     QCOMPARE(incrementSpin->value(), 0);
-    QCOMPARE(movesToGoSpin->value(), 0);
 
     timeControlCombo->setCurrentText(QStringLiteral("Custom"));
     QCOMPARE(baseTimeSpin->value(), 123);
     QCOMPARE(incrementSpin->value(), 7);
-    QCOMPARE(movesToGoSpin->value(), 18);
 
     const GameConfig config = widget.gameConfig();
     QCOMPARE(config.timeControl, QStringLiteral("Custom"));
     QCOMPARE(config.baseTimeSeconds, 123);
     QCOMPARE(config.incrementSeconds, 7);
-    QCOMPARE(config.movesToGo, 18);
 }
 
 void TestMatchSettingsWidget::openingFileDisablesManualPosition()
@@ -148,7 +134,6 @@ void TestMatchSettingsWidget::restoresSavedConfiguration()
     expected.game.timeControl = QStringLiteral("Custom");
     expected.game.baseTimeSeconds = 75;
     expected.game.incrementSeconds = 3;
-    expected.game.movesToGo = 20;
     expected.game.useStartPos = false;
     expected.game.startPosition =
         QStringLiteral("8/8/8/8/8/8/4K3/7k w - - 0 1");
@@ -168,7 +153,6 @@ void TestMatchSettingsWidget::restoresSavedConfiguration()
     QCOMPARE(game.timeControl, expected.game.timeControl);
     QCOMPARE(game.baseTimeSeconds, expected.game.baseTimeSeconds);
     QCOMPARE(game.incrementSeconds, expected.game.incrementSeconds);
-    QCOMPARE(game.movesToGo, expected.game.movesToGo);
     QCOMPARE(game.useOpeningFile, true);
     QCOMPARE(game.openingFilePath, expected.game.openingFilePath);
 }

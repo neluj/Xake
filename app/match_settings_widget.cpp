@@ -24,9 +24,6 @@ MatchSettingsWidget::MatchSettingsWidget(QWidget *parent)
     if (ui->incrementSpin) {
         m_customIncrementSeconds = ui->incrementSpin->value();
     }
-    if (ui->movesToGoSpin) {
-        m_customMovesToGo = ui->movesToGoSpin->value();
-    }
 
     applyPlayerType(ui->player1TypeCombo, ui->player1Stacked,
                     ui->player1NameEdit, ui->player1EnginePathEdit,
@@ -73,13 +70,6 @@ MatchSettingsWidget::MatchSettingsWidget(QWidget *parent)
             rememberCustomTimeSettings();
         });
     }
-    if (ui->movesToGoSpin) {
-        connect(ui->movesToGoSpin, QOverload<int>::of(&QSpinBox::valueChanged),
-                this, [this](int) {
-            rememberCustomTimeSettings();
-        });
-    }
-
     if (ui->useStartPosCheckBox) {
         connect(ui->useStartPosCheckBox, &QCheckBox::toggled, this, [this](bool) {
             applyOpeningFileSelection();
@@ -125,7 +115,6 @@ GameConfig MatchSettingsWidget::gameConfig() const
     config.timeControl = ui->timeControlCombo->currentText().trimmed();
     config.baseTimeSeconds = ui->baseTimeSpin->value();
     config.incrementSeconds = ui->incrementSpin->value();
-    config.movesToGo = ui->movesToGoSpin->value();
     config.useOpeningFile = ui->useOpeningFileCheckBox->isChecked();
     config.openingFilePath = config.useOpeningFile
         ? ui->openingFileEdit->text().trimmed()
@@ -185,7 +174,6 @@ void MatchSettingsWidget::setConfig(const MatchConfig& config)
                 QStringLiteral("Custom"), Qt::CaseInsensitive) == 0) {
             m_customBaseTimeSeconds = game.baseTimeSeconds;
             m_customIncrementSeconds = game.incrementSeconds;
-            m_customMovesToGo = game.movesToGo;
         }
         ui->timeControlCombo->setCurrentIndex(timeControlIndex);
         applyTimeControlSelection();
@@ -222,7 +210,7 @@ void MatchSettingsWidget::applyOpeningFileSelection()
 
 void MatchSettingsWidget::applyTimeControlSelection()
 {
-    if (!ui->timeControlCombo || !ui->baseTimeSpin || !ui->incrementSpin || !ui->movesToGoSpin) {
+    if (!ui->timeControlCombo || !ui->baseTimeSpin || !ui->incrementSpin) {
         return;
     }
 
@@ -231,21 +219,17 @@ void MatchSettingsWidget::applyTimeControlSelection()
 
     ui->baseTimeSpin->setEnabled(isCustom);
     ui->incrementSpin->setEnabled(isCustom);
-    ui->movesToGoSpin->setEnabled(isCustom);
 
     if (isCustom) {
         const QSignalBlocker baseBlocker(ui->baseTimeSpin);
         const QSignalBlocker incrementBlocker(ui->incrementSpin);
-        const QSignalBlocker movesBlocker(ui->movesToGoSpin);
         ui->baseTimeSpin->setValue(m_customBaseTimeSeconds);
         ui->incrementSpin->setValue(m_customIncrementSeconds);
-        ui->movesToGoSpin->setValue(m_customMovesToGo);
         return;
     }
 
     int baseTimeSeconds = 0;
     int incrementSeconds = 0;
-    int movesToGo = 0;
 
     if (selection.compare(QStringLiteral("Bullet"), Qt::CaseInsensitive) == 0) {
         baseTimeSeconds = 60;
@@ -256,21 +240,18 @@ void MatchSettingsWidget::applyTimeControlSelection()
     } else {
         ui->baseTimeSpin->setEnabled(true);
         ui->incrementSpin->setEnabled(true);
-        ui->movesToGoSpin->setEnabled(true);
         return;
     }
 
     const QSignalBlocker baseBlocker(ui->baseTimeSpin);
     const QSignalBlocker incrementBlocker(ui->incrementSpin);
-    const QSignalBlocker movesBlocker(ui->movesToGoSpin);
     ui->baseTimeSpin->setValue(baseTimeSeconds);
     ui->incrementSpin->setValue(incrementSeconds);
-    ui->movesToGoSpin->setValue(movesToGo);
 }
 
 void MatchSettingsWidget::rememberCustomTimeSettings()
 {
-    if (!ui->timeControlCombo || !ui->baseTimeSpin || !ui->incrementSpin || !ui->movesToGoSpin) {
+    if (!ui->timeControlCombo || !ui->baseTimeSpin || !ui->incrementSpin) {
         return;
     }
     if (ui->timeControlCombo->currentText().trimmed().compare(QStringLiteral("Custom"), Qt::CaseInsensitive) != 0) {
@@ -279,7 +260,6 @@ void MatchSettingsWidget::rememberCustomTimeSettings()
 
     m_customBaseTimeSeconds = ui->baseTimeSpin->value();
     m_customIncrementSeconds = ui->incrementSpin->value();
-    m_customMovesToGo = ui->movesToGoSpin->value();
 }
 
 void MatchSettingsWidget::applyPlayerType(QComboBox *typeCombo,

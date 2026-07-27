@@ -47,5 +47,4 @@ private:
     QString m_lastOpeningDir;
     int m_customBaseTimeSeconds = 300;
     int m_customIncrementSeconds = 0;
-    int m_customMovesToGo = 0;
 };

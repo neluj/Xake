@@ -4,7 +4,7 @@
 
 namespace {
 
-constexpr int kSettingsSchemaVersion = 1;
+constexpr int kSettingsSchemaVersion = 2;
 
 void writePlayer(QSettings& settings,
                  const QString& group,
@@ -39,7 +39,6 @@ void writeGame(QSettings& settings, const GameConfig& game)
     settings.setValue(QStringLiteral("timeControl"), game.timeControl);
     settings.setValue(QStringLiteral("baseTimeSeconds"), game.baseTimeSeconds);
     settings.setValue(QStringLiteral("incrementSeconds"), game.incrementSeconds);
-    settings.setValue(QStringLiteral("movesToGo"), game.movesToGo);
     settings.setValue(QStringLiteral("useStartPos"), game.useStartPos);
     settings.setValue(QStringLiteral("startPosition"), game.startPosition);
     settings.setValue(QStringLiteral("useOpeningFile"), game.useOpeningFile);
@@ -57,7 +56,6 @@ GameConfig readGame(QSettings& settings)
         settings.value(QStringLiteral("baseTimeSeconds")).toInt();
     game.incrementSeconds =
         settings.value(QStringLiteral("incrementSeconds")).toInt();
-    game.movesToGo = settings.value(QStringLiteral("movesToGo")).toInt();
     game.useStartPos =
         settings.value(QStringLiteral("useStartPos"), true).toBool();
     game.startPosition =

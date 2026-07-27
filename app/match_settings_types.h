@@ -17,7 +17,6 @@ struct GameConfig {
     QString timeControl;
     int baseTimeSeconds = 0;
     int incrementSeconds = 0;
-    int movesToGo = 0;
     bool useStartPos = true;
     QString startPosition;
     bool useOpeningFile = false;

@@ -40,7 +40,6 @@ struct HistoryEntry {
     QString timeControl;
     int baseTimeSeconds = 0;
     int incrementSeconds = 0;
-    int movesToGo = 0;
     QString result;
     QString termination;
     QString message;

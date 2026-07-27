@@ -192,6 +192,7 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     QCOMPARE(gameSettings.value(QStringLiteral("baseTimeSeconds")).toInt(),
              tournamentConfig(QString::fromLatin1(kMateInOneFen), 1)
                  .match.game.baseTimeSeconds);
+    QVERIFY(!gameSettings.contains(QStringLiteral("movesToGo")));
 
     const QJsonObject summary = root.value(QStringLiteral("summary")).toObject();
     QCOMPARE(summary.value(QStringLiteral("completedGames")).toInt(), 1);

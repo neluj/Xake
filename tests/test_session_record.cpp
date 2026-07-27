@@ -53,6 +53,11 @@ void TestSessionRecord::writesCompletedMatchState()
     QCOMPARE(root.value(QStringLiteral("moves")).toArray().size(), 1);
     QCOMPARE(root.value(QStringLiteral("moves")).toArray().at(0).toString(),
              QStringLiteral("f7g7"));
+    const QJsonObject gameSettings = root.value(QStringLiteral("match"))
+                                         .toObject()
+                                         .value(QStringLiteral("game"))
+                                         .toObject();
+    QVERIFY(!gameSettings.contains(QStringLiteral("movesToGo")));
 
     const QJsonObject clocks = root.value(QStringLiteral("clocks")).toObject();
     QCOMPARE(clocks.value(QStringLiteral("whiteMs")).toInteger(), qint64(1234));
