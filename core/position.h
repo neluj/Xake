@@ -33,6 +33,7 @@ public:
     bool square_is_attacked_bySide(Square64 square, Color side) const;
     bool has_threefold_repetition() const;
     bool has_insufficient_material() const;
+    bool has_mating_material(Color color) const;
 
     //Move related functions
     bool do_move(Move move);

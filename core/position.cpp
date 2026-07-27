@@ -474,8 +474,7 @@ bool Position::has_insufficient_material() const
     }
 
     if (totalBishops == 0) {
-        return (whiteKnights == 2 && blackKnights == 0)
-            || (whiteKnights == 0 && blackKnights == 2);
+        return false;
     }
 
     if (totalKnights == 0) {
@@ -503,6 +502,55 @@ bool Position::has_insufficient_material() const
     }
 
     return false;
+}
+
+bool Position::has_mating_material(Color color) const
+{
+    const Color opponent = ~color;
+    if (pieceTypesBitboards[color][PAWN]
+        || pieceTypesBitboards[color][ROOK]
+        || pieceTypesBitboards[color][QUEEN]) {
+        return true;
+    }
+
+    const int knights = Bitboards::cpop(pieceTypesBitboards[color][KNIGHT]);
+    const Bitboard bishops = pieceTypesBitboards[color][BISHOP];
+    const int bishopCount = Bitboards::cpop(bishops);
+    if (knights == 0 && bishopCount == 0) {
+        return false;
+    }
+
+    if (knights >= 2 || (knights >= 1 && bishopCount >= 1)) {
+        return true;
+    }
+
+    const Bitboard opponentNonBishops = pieceTypesBitboards[opponent][PAWN]
+        | pieceTypesBitboards[opponent][KNIGHT]
+        | pieceTypesBitboards[opponent][ROOK]
+        | pieceTypesBitboards[opponent][QUEEN];
+    if (opponentNonBishops) {
+        return true;
+    }
+
+    const Bitboard opponentBishops = pieceTypesBitboards[opponent][BISHOP];
+    if (knights == 1) {
+        return opponentBishops != 0;
+    }
+
+    bool hasLightSquareBishop = false;
+    bool hasDarkSquareBishop = false;
+    Bitboard remainingBishops = bishops | opponentBishops;
+    while (remainingBishops) {
+        const Square64 square = Square64(Bitboards::ctz(remainingBishops));
+        remainingBishops = Bitboards::clear_pieces(remainingBishops, square);
+
+        const bool isLightSquare =
+            ((int(square_file(square)) + int(square_rank(square))) % 2) == 0;
+        hasLightSquareBishop |= isLightSquare;
+        hasDarkSquareBishop |= !isLightSquare;
+    }
+
+    return hasLightSquareBishop && hasDarkSquareBishop;
 }
 
 

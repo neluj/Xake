@@ -17,6 +17,8 @@ namespace {
 constexpr char kStartFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 constexpr char kInsufficientMaterialAfterCaptureFen[] = "4k3/8/8/8/8/8/3b4/2N1K3 w - - 0 1";
 constexpr char kInsufficientMaterialAfterCaptureResultFen[] = "4k3/8/8/8/8/8/3K4/2N5 b - - 0 1";
+constexpr char kTwoKnightMateFen[] = "7k/5K2/5N2/8/7N/8/8/8 w - - 0 1";
+constexpr char kTimeoutWithoutMatingMaterialFen[] = "7k/8/8/8/8/8/8/R3K3 w - - 0 1";
 
 int squareFrom(char file, char rank)
 {
@@ -113,7 +115,9 @@ private slots:
     void controllerStopsOnThreefoldRepetition();
     void controllerStopsOnFiftyMoveRule();
     void controllerStopsOnInsufficientMaterialAfterCapture();
+    void controllerAllowsMateWithTwoKnights();
     void controllerStopsOnTimeout();
+    void controllerDrawsOnTimeoutWithoutMatingMaterial();
     void controllerRejectsMoveAfterTimeout();
     void controllerFreezesClockWhenStopped();
     void controllerStopsWhenEngineExits();
@@ -373,6 +377,26 @@ void TestMoveExecution::controllerStopsOnInsufficientMaterialAfterCapture()
     QCOMPARE(message[1].toString(), QStringLiteral("Draw by insufficient material."));
 }
 
+void TestMoveExecution::controllerAllowsMateWithTwoKnights()
+{
+    const QString fen = QString::fromLatin1(kTwoKnightMateFen);
+    GameController controller;
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
+
+    QVERIFY(controller.startMatch(humanVsHumanConfig(fen), fen.toStdString()));
+    QVERIFY(controller.isActive());
+    QVERIFY(controller.applyHumanMove(makeCandidate('h', '4', 'g', '6')));
+
+    QCOMPARE(controller.isActive(), false);
+    QCOMPARE(stoppedSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 1);
+
+    const QList<QVariant> message = errorSpy.takeFirst();
+    QCOMPARE(message[0].toString(), QStringLiteral("Checkmate"));
+    QCOMPARE(message[1].toString(), QStringLiteral("White wins by checkmate."));
+}
+
 void TestMoveExecution::controllerStopsOnTimeout()
 {
     GameController controller;
@@ -392,6 +416,33 @@ void TestMoveExecution::controllerStopsOnTimeout()
     const QList<QVariant> message = errorSpy.takeFirst();
     QCOMPARE(message[0].toString(), QStringLiteral("Time"));
     QCOMPARE(message[1].toString(), QStringLiteral("Black wins on time."));
+}
+
+void TestMoveExecution::controllerDrawsOnTimeoutWithoutMatingMaterial()
+{
+    const QString fen = QString::fromLatin1(kTimeoutWithoutMatingMaterialFen);
+    GameController controller;
+    QSignalSpy errorSpy(&controller, &GameController::errorOccurred);
+    QSignalSpy stoppedSpy(&controller, &GameController::matchStopped);
+    QSignalSpy finishedSpy(&controller, &GameController::gameFinished);
+
+    QVERIFY(controller.startMatch(timedHumanVsHumanConfig(fen, 1), fen.toStdString()));
+    controller.m_whiteTimeMs = 0;
+    controller.handleTurnTimeout();
+
+    QCOMPARE(controller.isActive(), false);
+    QCOMPARE(stoppedSpy.count(), 1);
+    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(finishedSpy.count(), 1);
+
+    const GameResult result = finishedSpy.takeFirst().at(0).value<GameResult>();
+    QCOMPARE(result.outcome, GameOutcome::Draw);
+    QCOMPARE(result.termination, GameTermination::TimeForfeit);
+
+    const QList<QVariant> message = errorSpy.takeFirst();
+    QCOMPARE(message[0].toString(), QStringLiteral("Draw"));
+    QCOMPARE(message[1].toString(),
+             QStringLiteral("Draw on time: Black has no mating material."));
 }
 
 void TestMoveExecution::controllerRejectsMoveAfterTimeout()

@@ -1084,6 +1084,13 @@ bool GameController::finishGameOnTime(Color flaggedSide)
     }
 
     const Color winner = ~flaggedSide;
+    if (!m_position.has_mating_material(winner)) {
+        return finishGameAsDraw(
+            GameTermination::TimeForfeit,
+            tr("Draw on time: %1 has no mating material.")
+                .arg(winner == WHITE ? tr("White") : tr("Black")));
+    }
+
     return finishGame(winner == WHITE ? GameOutcome::WhiteWin : GameOutcome::BlackWin,
                       GameTermination::TimeForfeit,
                       tr("Time"),
