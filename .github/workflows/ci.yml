@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows build and tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.3"
+          arch: "win64_mingw"
+          tools: "tools_mingw1310,qt.tools.win64_mingw1310"
+          cache: true
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=g++.exe
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Package
+        run: cmake --build build --target package --parallel
+
+      - name: Test deployed package
+        shell: pwsh
+        run: |
+          $archives = @(Get-ChildItem build -Filter "Xake-*.zip" -File)
+          if ($archives.Count -ne 1) {
+            throw "Expected one Xake package, found $($archives.Count)."
+          }
+          $packageDirectory = Join-Path $env:RUNNER_TEMP "xake-package"
+          Expand-Archive -LiteralPath $archives[0].FullName -DestinationPath $packageDirectory
+          ./tools/test_windows_package.ps1 -PackageDirectory $packageDirectory
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xake-0.1.0-Windows-AMD64
+          path: |
+            build/Xake-*.zip
+            build/Xake-*.zip.sha256
+          if-no-files-found: error

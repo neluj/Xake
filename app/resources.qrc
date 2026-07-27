@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/assets">
+        <file alias="pieces/pieceset.png">assets/Chess_Pieces_Sprite.png</file>
+        <file alias="colors/color_w.svg">assets/color_w.svg</file>
+        <file alias="colors/color_b.svg">assets/color_b.svg</file>
+        <file alias="branding/xake-logo.png">assets/xake-logo.png</file>
+    </qresource>
+</RCC>
