@@ -47,6 +47,7 @@ struct EngineSession {
     UciClient *client = nullptr;
     bool active = false;
     bool uciOk = false;
+    bool newGameSent = false;
     bool readyOk = false;
     bool searching = false;
     bool discardBestMove = false;

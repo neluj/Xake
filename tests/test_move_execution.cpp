@@ -129,6 +129,7 @@ private slots:
     void controllerReportsNoMoveBestMove();
     void controllerReportsUnexpectedEngineBestMove();
     void controllerReportsHandshakeTimeout();
+    void controllerWaitsForReadyAfterNewGame();
     void engineFailureMessages_data();
     void engineFailureMessages();
     void controllerIgnoresDuplicateEngineBestMove();
@@ -655,6 +656,24 @@ void TestMoveExecution::controllerReportsHandshakeTimeout()
     QCOMPARE(failureSpy.takeFirst()[0].value<EngineFailure>(),
              EngineFailure::UciHandshakeTimeout);
     QVERIFY(!controller.isActive());
+}
+
+void TestMoveExecution::controllerWaitsForReadyAfterNewGame()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+                                  kStartFen));
+
+    EngineSession& session = controller.m_whiteSession;
+    session.active = true;
+    session.uciOk = true;
+
+    controller.handleReadyOk(EngineSide::White);
+    QVERIFY(session.newGameSent);
+    QVERIFY(!session.readyOk);
+
+    controller.handleReadyOk(EngineSide::White);
+    QVERIFY(session.readyOk);
 }
 
 void TestMoveExecution::engineFailureMessages_data()

@@ -398,6 +398,7 @@ bool GameController::startEngineForPlayer(EngineSide side,
 
     session.active = false;
     session.uciOk = false;
+    session.newGameSent = false;
     session.readyOk = false;
     session.searching = false;
     session.discardBestMove = false;
@@ -439,6 +440,7 @@ void GameController::stopEngines()
     if (m_whiteSession.client) {
         m_whiteSession.active = false;
         m_whiteSession.uciOk = false;
+        m_whiteSession.newGameSent = false;
         m_whiteSession.readyOk = false;
         m_whiteSession.searching = false;
         m_whiteSession.discardBestMove = false;
@@ -452,6 +454,7 @@ void GameController::stopEngines()
     if (m_blackSession.client) {
         m_blackSession.active = false;
         m_blackSession.uciOk = false;
+        m_blackSession.newGameSent = false;
         m_blackSession.readyOk = false;
         m_blackSession.searching = false;
         m_blackSession.discardBestMove = false;
@@ -713,7 +716,15 @@ void GameController::handleUciOk(EngineSide side)
 void GameController::handleReadyOk(EngineSide side)
 {
     EngineSession& session = sessionForSide(side);
-    if (!session.active || !session.client) {
+    if (!session.active || !session.client || !session.uciOk) {
+        return;
+    }
+    if (!session.newGameSent) {
+        session.newGameSent = true;
+        ++session.handshakeGeneration;
+        session.client->sendNewGame();
+        session.client->sendIsReady();
+        armEngineResponseTimeout(side, EngineFailure::ReadyHandshakeTimeout);
         return;
     }
     if (session.readyOk) {
@@ -721,7 +732,6 @@ void GameController::handleReadyOk(EngineSide side)
     }
     session.readyOk = true;
     ++session.handshakeGeneration;
-    session.client->sendNewGame();
 
     const Color engineColor = side == EngineSide::White ? WHITE : BLACK;
     if (m_position.get_side_to_move() == engineColor) {
