@@ -60,6 +60,7 @@ private slots:
     void playsAllGamesAndAlternatesColors();
     void drawsAtTournamentMoveLimit();
     void writesTournamentReportWithMoves();
+    void persistsReportAtLifecycleBoundaries();
     void reusesEachOpeningWithBothColors();
     void pausesResumesAndStopsTournament();
 };
@@ -226,6 +227,45 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     QVERIFY(pgn.contains(QStringLiteral("[Black \"Player 2\"]")));
     QVERIFY(pgn.contains(QStringLiteral("[Result \"1-0\"]")));
     QVERIFY(pgn.contains(QStringLiteral("1. Qg7# 1-0")));
+}
+
+void TestTournamentRunner::persistsReportAtLifecycleBoundaries()
+{
+    QTemporaryDir reportDir;
+    QVERIFY(reportDir.isValid());
+
+    GameController controller;
+    TournamentRunner runner(&controller);
+    QVERIFY(runner.start(tournamentConfig(QString::fromLatin1(kStartFen), 1),
+                         singleOpening(QString::fromLatin1(kStartFen)),
+                         reportDir.path(),
+                         QStringLiteral("report_boundaries")));
+
+    const auto reportMoves = [&runner]() {
+        QFile reportFile(runner.reportFilePath());
+        if (!reportFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonArray{};
+        }
+        const QJsonDocument document =
+            QJsonDocument::fromJson(reportFile.readAll());
+        return document.object()
+            .value(QStringLiteral("games")).toArray()
+            .at(0).toObject()
+            .value(QStringLiteral("moves")).toArray();
+    };
+
+    QCOMPARE(reportMoves().size(), 0);
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+    QCOMPARE(runner.gameRecords().constLast().moves,
+             QStringList({QStringLiteral("e2e4")}));
+    QCOMPARE(reportMoves().size(), 0);
+
+    QVERIFY(runner.pause());
+    const QJsonArray pausedMoves = reportMoves();
+    QCOMPARE(pausedMoves.size(), 1);
+    QCOMPARE(pausedMoves.at(0).toString(), QStringLiteral("e2e4"));
+
+    QVERIFY(runner.stop());
 }
 
 void TestTournamentRunner::reusesEachOpeningWithBothColors()

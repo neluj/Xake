@@ -415,7 +415,6 @@ void TournamentRunner::handleMovePlayed(int ply, const QString& uciMove)
     } else {
         current->moves = m_gameController->moveHistoryUci();
     }
-    persistReport();
 }
 
 void TournamentRunner::handleGameFinished(const GameResult& result)

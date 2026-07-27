@@ -1196,9 +1196,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tournamentRunner, &TournamentRunner::tournamentReportError, this,
             [this](const QString& message) {
         if (ui && ui->statusbar) {
-            ui->statusbar->showMessage(message);
+            ui->statusbar->showMessage(message, 10000);
         }
-        QMessageBox::warning(this, tr("Tournament report"), message);
     });
 
     if (ui && ui->board) {
