@@ -134,6 +134,7 @@ private slots:
     void engineFailureMessages();
     void controllerIgnoresDuplicateEngineBestMove();
     void controllerWritesUnifiedEngineCommunicationLog();
+    void controllerBoundsCommunicationHistoryWithoutTruncatingLog();
     void controllerAnnouncesEachEngineSearch();
     void controllerStartsAfterOpeningMoves();
     void controllerPauseFreezesClockAndRejectsMoves();
@@ -794,6 +795,45 @@ void TestMoveExecution::controllerWritesUnifiedEngineCommunicationLog()
     QVERIFY(fileLines.at(0).contains(QStringLiteral("[Session] ## match test_game started")));
     QVERIFY(fileLines.at(1).contains(QStringLiteral("[White: Alpha] >> uci")));
     QVERIFY(fileLines.at(2).contains(QStringLiteral("[Black: Beta] << id name Beta")));
+}
+
+void TestMoveExecution::controllerBoundsCommunicationHistoryWithoutTruncatingLog()
+{
+    QTemporaryDir logDir;
+    QVERIFY(logDir.isValid());
+
+    GameController controller;
+    QVERIFY(controller.startMatch(
+        humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+        kStartFen,
+        logDir.path(),
+        QStringLiteral("bounded_history")));
+
+    constexpr int extraLines = 25;
+    for (int line = 0;
+         line < GameController::kCommunicationHistoryLimit + extraLines;
+         ++line) {
+        controller.handleEngineCommunication(
+            EngineSide::White,
+            QStringLiteral("<<"),
+            QStringLiteral("line %1").arg(line));
+    }
+
+    const QStringList history = controller.communicationHistory();
+    QCOMPARE(history.size(), GameController::kCommunicationHistoryLimit);
+    QVERIFY(history.first().endsWith(QStringLiteral("line 25")));
+    QVERIFY(history.last().endsWith(
+        QStringLiteral("line %1")
+            .arg(GameController::kCommunicationHistoryLimit + extraLines - 1)));
+
+    QFile logFile(controller.communicationLogFilePath());
+    QVERIFY(logFile.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QStringList fileLines = QString::fromUtf8(logFile.readAll())
+                                      .split('\n', Qt::SkipEmptyParts);
+    QCOMPARE(fileLines.size(),
+             GameController::kCommunicationHistoryLimit + extraLines + 1);
+    QVERIFY(fileLines.first().contains(
+        QStringLiteral("[Session] ## match bounded_history started")));
 }
 
 void TestMoveExecution::controllerAnnouncesEachEngineSearch()

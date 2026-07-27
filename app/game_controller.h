@@ -86,6 +86,8 @@ class GameController : public QObject
     friend class TestMoveExecution;
 
 public:
+    static constexpr int kCommunicationHistoryLimit = 3000;
+
     explicit GameController(QObject *parent = nullptr);
     ~GameController() override;
 

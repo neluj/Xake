@@ -681,6 +681,9 @@ void GameController::writeCommunicationLog(const QString& source,
     }
 
     m_communicationHistory.append(formatted);
+    if (m_communicationHistory.size() > kCommunicationHistoryLimit) {
+        m_communicationHistory.removeFirst();
+    }
     emit communicationLogged(formatted);
 }
 

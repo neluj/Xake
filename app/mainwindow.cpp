@@ -2004,7 +2004,8 @@ void MainWindow::openDebugWindow()
 
     auto *debugText = new QPlainTextEdit(dialog);
     configureEngineOutput(debugText);
-    debugText->setMaximumBlockCount(0);
+    debugText->setMaximumBlockCount(
+        GameController::kCommunicationHistoryLimit);
     renderCommunicationHistory(debugText,
                                m_gameController->communicationHistory());
     layout->addWidget(debugText);
