@@ -27,16 +27,16 @@ Requirements:
 
 - A C++20 compiler.
 - CMake 3.16 or newer.
-- Qt 6.7 with the Widgets, Svg, and Test modules.
+- Qt 6.7 or newer with the Widgets, Svg, and Test modules.
 - Ninja or another CMake-supported build tool.
 - Python 3 only for the optional standalone perft suite script.
 
-Example using Qt 6.7.0 and MinGW:
+The official Windows package uses Qt 6.10.3 and MinGW 13.1. Example:
 
 ```powershell
 cmake -S . -B build -G Ninja `
   -DCMAKE_BUILD_TYPE=Release `
-  -DCMAKE_PREFIX_PATH=C:/Qt/6.7.0/mingw_64
+  -DCMAKE_PREFIX_PATH=C:/Qt/6.10.3/mingw_64
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 cmake --build build --target package

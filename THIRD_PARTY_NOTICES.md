@@ -5,13 +5,13 @@ advice.
 
 ## Qt
 
-Xake dynamically links to Qt 6.7 Core, Gui, Widgets, and Svg libraries. The
+Xake dynamically links to Qt 6.10.3 Core, Gui, Widgets, and Svg libraries. The
 open-source Qt distribution makes these modules available under the GNU Lesser
 General Public License version 3 and, depending on the module, the GNU General
 Public License version 3. Commercial Qt terms are not used by this project.
 
 - Project: https://www.qt.io/
-- Source: https://download.qt.io/archive/qt/6.7/6.7.0/single/
+- Source: https://download.qt.io/archive/qt/6.10/6.10.3/single/
 - License information: https://doc.qt.io/qt-6/licensing.html
 - LGPL-3.0 text: `licenses/LGPL-3.0.txt`
 - Corresponding-source offer: `QT_SOURCE_OFFER.md`

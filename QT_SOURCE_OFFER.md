@@ -1,6 +1,6 @@
 # Qt Corresponding Source Offer
 
-Xake 0.1.0 Windows packages dynamically link to unmodified Qt 6.7.0 libraries
+Xake 0.1.0 Windows packages dynamically link to unmodified Qt 6.10.3 libraries
 built from the Qt open-source distribution.
 
 For at least three years after a Xake 0.1.0 binary package is distributed, the
@@ -12,8 +12,8 @@ and installation.
 Requests can be submitted at:
 https://github.com/neluj/Xake/issues
 
-The upstream source archive used for Qt 6.7.0 is also available at:
-https://download.qt.io/archive/qt/6.7/6.7.0/single/
+The upstream source archive used for Qt 6.10.3 is also available at:
+https://download.qt.io/archive/qt/6.10/6.10.3/single/
 
 Xake does not modify the Qt libraries. Relinking is possible by replacing the
 dynamically linked Qt DLLs with a compatible build that satisfies the same ABI

@@ -7,7 +7,7 @@ Use a Release build with the same Qt toolchain intended for distribution:
 ```powershell
 cmake -S . -B build-release -G Ninja `
   -DCMAKE_BUILD_TYPE=Release `
-  -DCMAKE_PREFIX_PATH=C:/Qt/6.7.0/mingw_64
+  -DCMAKE_PREFIX_PATH=C:/Qt/6.10.3/mingw_64
 cmake --build build-release --parallel
 ctest --test-dir build-release --output-on-failure
 cmake --build build-release --target package
@@ -15,6 +15,7 @@ cmake --build build-release --target package
 
 The package target installs `Xake.exe`, invokes Qt's deployment tooling
 (`windeployqt` on Windows), installs legal notices, and creates a ZIP archive.
+Official 0.1.0 packages use Qt 6.10.3 with MinGW 13.1, matching CI.
 
 ## Isolated Smoke Test
 
