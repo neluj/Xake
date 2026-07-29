@@ -37,7 +37,7 @@ private slots:
     void selectionProvidesLegalDestinations();
     void illegalDestinationIsIgnored();
     void disabledInputIgnoresClicks();
-    void capturedPiecesAreGroupedByType();
+    void capturedPiecesAreGroupedByAscendingValue();
 
 private:
     static QPoint squareCenter(BoardWidget& board, int square);
@@ -146,7 +146,7 @@ void TestBoardWidget::disabledInputIgnoresClicks()
     QVERIFY(board.m_legalMoves.isEmpty());
 }
 
-void TestBoardWidget::capturedPiecesAreGroupedByType()
+void TestBoardWidget::capturedPiecesAreGroupedByAscendingValue()
 {
     CapturedPiecesWidget widget;
     widget.setCapturedPieces(
@@ -155,10 +155,10 @@ void TestBoardWidget::capturedPiecesAreGroupedByType()
 
     QCOMPARE(widget.piecesForColor(WHITE),
              QVector<Piece>(
-                 {W_QUEEN, W_ROOK, W_BISHOP, W_KNIGHT,
-                  W_PAWN, W_PAWN}));
+                 {W_PAWN, W_PAWN, W_KNIGHT, W_BISHOP,
+                  W_ROOK, W_QUEEN}));
     QCOMPARE(widget.piecesForColor(BLACK),
-             QVector<Piece>({B_QUEEN, B_ROOK, B_BISHOP, B_PAWN}));
+             QVector<Piece>({B_PAWN, B_BISHOP, B_ROOK, B_QUEEN}));
 
     widget.resize(widget.sizeHint());
     QPixmap rendered(widget.size());

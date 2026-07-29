@@ -13,11 +13,11 @@ constexpr int kRowGap = 7;
 constexpr int kIconGap = 3;
 constexpr int kMaximumIconSize = 38;
 constexpr PieceType kCapturedPieceOrder[] = {
-    QUEEN,
-    ROOK,
-    BISHOP,
-    KNIGHT,
     PAWN,
+    KNIGHT,
+    BISHOP,
+    ROOK,
+    QUEEN,
     KING
 };
 
