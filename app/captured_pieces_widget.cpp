@@ -12,6 +12,14 @@ constexpr int kOuterMargin = 8;
 constexpr int kRowGap = 7;
 constexpr int kIconGap = 3;
 constexpr int kMaximumIconSize = 38;
+constexpr PieceType kCapturedPieceOrder[] = {
+    QUEEN,
+    ROOK,
+    BISHOP,
+    KNIGHT,
+    PAWN,
+    KING
+};
 
 int pieceSpriteColumn(Piece piece)
 {
@@ -64,9 +72,11 @@ void CapturedPiecesWidget::setCapturedPieces(
 QVector<Piece> CapturedPiecesWidget::piecesForColor(Color color) const
 {
     QVector<Piece> pieces;
-    for (const Piece piece : m_capturedPieces) {
-        if (piece_color(piece) == color) {
-            pieces.append(piece);
+    for (const PieceType type : kCapturedPieceOrder) {
+        for (const Piece piece : m_capturedPieces) {
+            if (piece_color(piece) == color && piece_type(piece) == type) {
+                pieces.append(piece);
+            }
         }
     }
     return pieces;
