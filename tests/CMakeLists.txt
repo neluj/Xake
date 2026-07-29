@@ -62,6 +62,17 @@ target_link_libraries(app_settings_tests PRIVATE Qt6::Test)
 
 add_test(NAME app_settings_tests COMMAND app_settings_tests)
 
+add_executable(application_data_tests
+    test_application_data.cpp
+    ${CMAKE_SOURCE_DIR}/app/application_data.cpp
+    ${CMAKE_SOURCE_DIR}/app/application_data_dialog.cpp
+)
+
+target_include_directories(application_data_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(application_data_tests PRIVATE Qt6::Test Qt6::Widgets)
+
+add_test(NAME application_data_tests COMMAND application_data_tests)
+
 add_executable(history_repository_tests
     test_history_repository.cpp
     ${CMAKE_SOURCE_DIR}/app/history_repository.cpp

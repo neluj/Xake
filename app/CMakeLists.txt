@@ -1,4 +1,8 @@
 set(APP_SOURCES
+    application_data.cpp
+    application_data.h
+    application_data_dialog.cpp
+    application_data_dialog.h
     boardwidget.cpp
     boardwidget.h
     app_state.h

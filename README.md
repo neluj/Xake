@@ -108,6 +108,11 @@ output, and the Debug window displays the unified UCI communication log.
 Application settings are stored by `QSettings`; on Windows this is under
 `HKEY_CURRENT_USER\Software\Xake\Xake`.
 
+Use **Settings > Manage application data...** to remove records, PGN files,
+communication logs, or saved settings independently. Selecting everything
+also removes Xake's empty local-data directories and closes the application;
+external engines and opening files are never deleted.
+
 ## Testing
 
 The CTest suite covers FEN handling, legal move execution, move generation,

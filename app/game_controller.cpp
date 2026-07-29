@@ -367,6 +367,18 @@ QString GameController::communicationLogFilePath() const
     return m_communicationLogFile.fileName();
 }
 
+void GameController::closeCommunicationLog()
+{
+    if (m_communicationLogFile.isOpen()) {
+        m_communicationLogFile.flush();
+        m_communicationLogFile.close();
+    }
+    m_communicationLogFile.setFileName(QString());
+    m_communicationHistory.clear();
+    m_communicationLogErrorReported = false;
+    emit communicationHistoryReset();
+}
+
 bool GameController::timeControlEnabled() const
 {
     return m_timeControlEnabled;
