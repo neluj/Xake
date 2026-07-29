@@ -164,9 +164,13 @@ bool GameController::startMatch(const MatchConfig& config,
 {
     stopEngines();
     m_uciMoves.clear();
-    m_moveHistory.clear();
-    m_capturedPieces.clear();
+    m_moveRecords.clear();
     m_initialMoveCount = 0;
+    m_timeControlEnabled = false;
+    m_whiteTimeMs = 0;
+    m_blackTimeMs = 0;
+    m_incrementMs = 0;
+    m_timerRunning = false;
     m_paused = false;
     if (m_flagTimer) {
         m_flagTimer->stop();
@@ -196,8 +200,8 @@ bool GameController::startMatch(const MatchConfig& config,
 
     for (qsizetype ply = 0; ply < initialMoves.size(); ++ply) {
         const Move parsed = moveFromUci(initialMoves.at(ply));
-        Move appliedMove = NOMOVE;
-        if (!applyMove(parsed, &appliedMove)) {
+        MoveRecord record;
+        if (!applyMove(parsed, &record)) {
             m_active = false;
             emit errorOccurred(
                 tr("Invalid opening"),
@@ -206,7 +210,9 @@ bool GameController::startMatch(const MatchConfig& config,
                     .arg(initialMoves.at(ply)));
             return false;
         }
-        m_uciMoves.append(uciFromMove(appliedMove));
+        record.origin = MoveOrigin::Opening;
+        m_uciMoves.append(record.uci);
+        m_moveRecords.append(record);
     }
     m_initialMoveCount = static_cast<int>(m_uciMoves.size());
 
@@ -319,12 +325,12 @@ bool GameController::applyHumanMove(Move move)
         return false;
     }
 
-    Move appliedMove = NOMOVE;
-    if (!applyMove(move, &appliedMove)) {
+    MoveRecord record;
+    if (!applyMove(move, &record)) {
         return false;
     }
 
-    afterMoveApplied(appliedMove);
+    afterMoveApplied(record, MoveOrigin::Human);
     return true;
 }
 
@@ -353,9 +359,14 @@ QStringList GameController::moveHistoryUci() const
     return m_uciMoves;
 }
 
+QVector<MoveRecord> GameController::moveRecords() const
+{
+    return m_moveRecords;
+}
+
 QVector<Piece> GameController::capturedPieces() const
 {
-    return m_capturedPieces;
+    return capturedPiecesFromMoveRecords(m_moveRecords);
 }
 
 int GameController::initialMoveCount() const
@@ -393,8 +404,7 @@ bool GameController::clearFinishedSessionData()
 
     m_config = MatchConfig{};
     m_uciMoves.clear();
-    m_moveHistory.clear();
-    m_capturedPieces.clear();
+    m_moveRecords.clear();
     m_initialMoveCount = 0;
     m_baseIsStartpos = true;
     m_baseFen = kStartFen;
@@ -608,29 +618,37 @@ QString GameController::uciFromMove(Move move) const
     return uci;
 }
 
-bool GameController::applyMove(Move move, Move* appliedMove)
+bool GameController::applyMove(Move move, MoveRecord* record)
 {
     const Move legalMove = resolveMoveCandidate(move);
     if (legalMove == NOMOVE) {
         return false;
     }
 
+    const Piece movedPiece =
+        m_position.get_mailbox_piece(move_from(legalMove));
     Piece captured = captured_piece(legalMove);
     if (move_special(legalMove) == ENPASSANT) {
         captured = make_piece(~m_position.get_side_to_move(), PAWN);
+    }
+
+    MoveRecord applied;
+    applied.move = legalMove;
+    applied.uci = uciFromMove(legalMove).toLower();
+    applied.movedPiece = movedPiece;
+    applied.capturedPiece = captured;
+    if (m_timeControlEnabled) {
+        applied.whiteTimeBeforeMs = remainingTimeMs(WHITE);
+        applied.blackTimeBeforeMs = remainingTimeMs(BLACK);
     }
 
     if (!m_position.do_move(legalMove)) {
         return false;
     }
 
-    if (captured != NO_PIECE) {
-        m_capturedPieces.append(captured);
+    if (record) {
+        *record = applied;
     }
-    if (appliedMove) {
-        *appliedMove = legalMove;
-    }
-
     return true;
 }
 
@@ -922,15 +940,15 @@ void GameController::handleBestMove(EngineSide side, const QString& move)
         return;
     }
 
-    Move appliedMove = NOMOVE;
-    if (!applyMove(parsed, &appliedMove)) {
+    MoveRecord record;
+    if (!applyMove(parsed, &record)) {
         reportEngineFailure(side,
                             EngineFailure::IllegalBestMove,
                             QString(),
                             normalizedMove);
         return;
     }
-    afterMoveApplied(appliedMove);
+    afterMoveApplied(record, MoveOrigin::Engine);
 }
 
 void GameController::armEngineResponseTimeout(EngineSide side,
@@ -1092,9 +1110,9 @@ EngineSession& GameController::sessionForSide(EngineSide side)
     return (side == EngineSide::White) ? m_whiteSession : m_blackSession;
 }
 
-void GameController::afterMoveApplied(Move move)
+void GameController::afterMoveApplied(MoveRecord record, MoveOrigin origin)
 {
-    const QString uci = uciFromMove(move);
+    const QString uci = record.uci;
     if (uci.isEmpty()) {
         return;
     }
@@ -1107,11 +1125,16 @@ void GameController::afterMoveApplied(Move move)
             m_blackTimeMs += m_incrementMs;
         }
     }
+    record.origin = origin;
+    if (m_timeControlEnabled) {
+        record.whiteTimeAfterMs = remainingTimeMs(WHITE);
+        record.blackTimeAfterMs = remainingTimeMs(BLACK);
+    }
 
     m_uciMoves.append(uci.toLower());
-    m_moveHistory.append(move);
+    m_moveRecords.append(record);
     emit movePlayed(m_uciMoves.size(), m_uciMoves.constLast());
-    emit positionChanged(m_position, move);
+    emit positionChanged(m_position, record.move);
 
     if (finishGameIfNoLegalMoves()) {
         return;
@@ -1184,8 +1207,10 @@ bool GameController::finishGameIfDraw()
 
 bool GameController::finishGameIfMoveLimit()
 {
+    const qsizetype playedMoves =
+        m_moveRecords.size() - m_initialMoveCount;
     if (m_maxFullMoves <= 0
-        || m_moveHistory.size() < static_cast<qsizetype>(m_maxFullMoves) * 2) {
+        || playedMoves < static_cast<qsizetype>(m_maxFullMoves) * 2) {
         return false;
     }
 

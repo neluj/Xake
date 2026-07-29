@@ -220,6 +220,131 @@
              </property>
             </widget>
            </item>
+           <item>
+            <widget class="QGroupBox" name="replayPanel">
+             <property name="visible">
+              <bool>false</bool>
+             </property>
+             <property name="title">
+              <string>Replay</string>
+             </property>
+             <layout class="QVBoxLayout" name="replayPanelLayout">
+              <property name="leftMargin">
+               <number>6</number>
+              </property>
+              <property name="topMargin">
+               <number>6</number>
+              </property>
+              <property name="rightMargin">
+               <number>6</number>
+              </property>
+              <property name="bottomMargin">
+               <number>6</number>
+              </property>
+              <property name="spacing">
+               <number>4</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="labelReplayTitle">
+                <property name="font">
+                 <font>
+                  <bold>true</bold>
+                 </font>
+                </property>
+                <property name="text">
+                 <string>Replay</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="replayGameCombo">
+                <property name="toolTip">
+                 <string>Select a game from the loaded tournament or PGN</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="replayNavigationLayout">
+                <property name="spacing">
+                 <number>4</number>
+                </property>
+                <item>
+                 <widget class="QPushButton" name="replayFirstButton">
+                  <property name="text">
+                   <string>First</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>Go to the initial position</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="replayPreviousButton">
+                  <property name="text">
+                   <string>Previous</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>Go back one move</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="labelReplayProgress">
+                  <property name="minimumSize">
+                   <size>
+                    <width>75</width>
+                    <height>0</height>
+                   </size>
+                  </property>
+                  <property name="text">
+                   <string>Ply 0 / 0</string>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignCenter</set>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="replayNextButton">
+                  <property name="text">
+                   <string>Next</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>Advance one move</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="replayLastButton">
+                  <property name="text">
+                   <string>Last</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>Go to the final position</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="replayCloseButton">
+                  <property name="text">
+                   <string>Close</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>Close replay mode</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
           </layout>
          </widget>
          <widget class="QWidget" name="tabOutput">
@@ -589,6 +714,23 @@
                <item>
                 <layout class="QHBoxLayout" name="historyActionsLayout">
                  <item>
+                  <widget class="QPushButton" name="historyReplayButton">
+                   <property name="enabled">
+                    <bool>false</bool>
+                   </property>
+                   <property name="text">
+                    <string>Replay selected</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="historyLoadReplayButton">
+                   <property name="text">
+                    <string>Load file...</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
                   <spacer name="historyActionsSpacer">
                    <property name="orientation">
                     <enum>Qt::Horizontal</enum>
@@ -738,6 +880,7 @@
     </property>
     <addaction name="actionSingleGame"/>
     <addaction name="actionTournament"/>
+    <addaction name="actionOpenReplay"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -767,6 +910,14 @@
   <action name="actionTournament">
    <property name="text">
     <string>Tournament</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionOpenReplay">
+   <property name="text">
+    <string>Replay game/tournament...</string>
    </property>
    <property name="menuRole">
     <enum>QAction::NoRole</enum>

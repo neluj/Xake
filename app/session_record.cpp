@@ -148,6 +148,9 @@ bool writeSessionRecord(const SessionRecord& record,
     if (!record.finalFen.isEmpty()) {
         root["finalFen"] = record.finalFen;
     }
+    if (!record.moveRecords.isEmpty()) {
+        root["moveRecords"] = moveRecordsToJson(record.moveRecords);
+    }
     if (!record.moves.isEmpty()) {
         root["moveFormat"] = QStringLiteral("uci");
         QJsonArray moves;

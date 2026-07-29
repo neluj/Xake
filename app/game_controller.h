@@ -1,6 +1,7 @@
 #pragma once
 
 #include "match_settings_types.h"
+#include "move_record.h"
 #include "position.h"
 
 #include <QFile>
@@ -107,6 +108,7 @@ public:
     MatchConfig matchConfig() const;
     Xake::Position currentPosition() const;
     QStringList moveHistoryUci() const;
+    QVector<MoveRecord> moveRecords() const;
     QVector<Xake::Piece> capturedPieces() const;
     int initialMoveCount() const;
     QStringList communicationHistory() const;
@@ -141,8 +143,8 @@ private:
     Xake::Move moveFromUci(const QString& move) const;
     Xake::Move resolveMoveCandidate(Xake::Move move) const;
     QString uciFromMove(Xake::Move move) const;
-    bool applyMove(Xake::Move move, Xake::Move* appliedMove = nullptr);
-    void afterMoveApplied(Xake::Move move);
+    bool applyMove(Xake::Move move, MoveRecord* record = nullptr);
+    void afterMoveApplied(MoveRecord record, MoveOrigin origin);
     bool finishGameIfNoLegalMoves();
     bool finishGameIfDraw();
     bool finishGameIfMoveLimit();
@@ -201,8 +203,7 @@ private:
     bool m_baseIsStartpos = false;
     std::string m_baseFen;
     QStringList m_uciMoves;
-    QVector<Xake::Move> m_moveHistory;
-    QVector<Xake::Piece> m_capturedPieces;
+    QVector<MoveRecord> m_moveRecords;
     int m_initialMoveCount = 0;
     bool m_timeControlEnabled = false;
     qint64 m_whiteTimeMs = 0;

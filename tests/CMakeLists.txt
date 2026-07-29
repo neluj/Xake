@@ -87,6 +87,7 @@ add_test(NAME history_repository_tests COMMAND history_repository_tests)
 
 add_executable(session_record_tests
     test_session_record.cpp
+    ${CMAKE_SOURCE_DIR}/app/move_record.cpp
     ${CMAKE_SOURCE_DIR}/app/session_record.cpp
 )
 
@@ -115,9 +116,22 @@ target_link_libraries(pgn_export_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME pgn_export_tests COMMAND pgn_export_tests)
 
+add_executable(game_replay_tests
+    test_game_replay.cpp
+    ${CMAKE_SOURCE_DIR}/app/game_replay.cpp
+    ${CMAKE_SOURCE_DIR}/app/move_record.cpp
+    ${CMAKE_SOURCE_DIR}/app/opening_book.cpp
+)
+
+target_include_directories(game_replay_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(game_replay_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME game_replay_tests COMMAND game_replay_tests)
+
 add_executable(move_execution_tests
     test_move_execution.cpp
     ${CMAKE_SOURCE_DIR}/app/game_controller.cpp
+    ${CMAKE_SOURCE_DIR}/app/move_record.cpp
     ${CMAKE_SOURCE_DIR}/app/match_settings_validation.cpp
     ${CMAKE_SOURCE_DIR}/app/storage_paths.cpp
     ${CMAKE_SOURCE_DIR}/app/uci_client.cpp
@@ -132,6 +146,7 @@ add_executable(tournament_runner_tests
     test_tournament_runner.cpp
     ${CMAKE_SOURCE_DIR}/app/game_controller.cpp
     ${CMAKE_SOURCE_DIR}/app/match_settings_validation.cpp
+    ${CMAKE_SOURCE_DIR}/app/move_record.cpp
     ${CMAKE_SOURCE_DIR}/app/pgn_export.cpp
     ${CMAKE_SOURCE_DIR}/app/storage_paths.cpp
     ${CMAKE_SOURCE_DIR}/app/tournament_runner.cpp

@@ -20,7 +20,10 @@ void TestOpeningBook::parsesPgnMainlines()
         "[Event \"King side\"]\n"
         "[Opening \"Ruy Lopez\"]\n"
         "[Variation \"Berlin Defence\"]\n"
-        "[ECO \"C60\"]\n\n"
+        "[ECO \"C60\"]\n"
+        "[White \"Engine A\"]\n"
+        "[Black \"Engine B\"]\n"
+        "[Result \"1/2-1/2\"]\n\n"
         "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. O-O Nf6 1/2-1/2\n\n"
         "[Event \"Queen side\"]\n\n"
         "1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Bg5 Be7 5. e3 O-O 6. Qd2 Nbd7 *\n");
@@ -34,6 +37,9 @@ void TestOpeningBook::parsesPgnMainlines()
     QCOMPARE(openings.at(0).movesUci,
              QStringList({"e2e4", "e7e5", "g1f3", "b8c6",
                           "f1b5", "a7a6", "e1g1", "g8f6"}));
+    QCOMPARE(openings.at(0).white, QStringLiteral("Engine A"));
+    QCOMPARE(openings.at(0).black, QStringLiteral("Engine B"));
+    QCOMPARE(openings.at(0).result, QStringLiteral("1/2-1/2"));
     QCOMPARE(openings.at(1).movesUci.constLast(), QStringLiteral("b8d7"));
 }
 

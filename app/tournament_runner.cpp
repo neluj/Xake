@@ -147,6 +147,9 @@ QJsonObject gameRecordToJson(const TournamentGameRecord& record)
     }
     opening["moves"] = openingMoves;
     object["opening"] = opening;
+    if (!record.moveRecords.isEmpty()) {
+        object["moveRecords"] = moveRecordsToJson(record.moveRecords);
+    }
 
     QJsonArray moves;
     for (const QString& move : record.moves) {
@@ -415,6 +418,7 @@ void TournamentRunner::handleMovePlayed(int ply, const QString& uciMove)
     } else {
         current->moves = m_gameController->moveHistoryUci();
     }
+    current->moveRecords = m_gameController->moveRecords();
 }
 
 void TournamentRunner::handleGameFinished(const GameResult& result)
@@ -427,6 +431,8 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
         current->completed = true;
         current->result = result;
         current->finishedAtIso = currentTimestamp();
+        current->moves = m_gameController->moveHistoryUci();
+        current->moveRecords = m_gameController->moveRecords();
     }
 
     ++m_summary.completedGames;
@@ -486,6 +492,8 @@ void TournamentRunner::handleGameAborted(const QString& title, const QString& me
         current->finishedAtIso = m_finishedAtIso;
         current->abortTitle = title;
         current->abortMessage = message;
+        current->moves = m_gameController->moveHistoryUci();
+        current->moveRecords = m_gameController->moveRecords();
     }
     persistReport();
     persistPgn();
@@ -604,6 +612,8 @@ bool TournamentRunner::writeTournamentPgn(QString* errorOut) const
         game.opening = record.openingName;
         game.timeControl = pgnTimeControl(record.match.game);
         game.movesUci = record.moves;
+        game.openingMoveCount =
+            static_cast<int>(record.openingMoves.size());
         games.append(game);
     }
 

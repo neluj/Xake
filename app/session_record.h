@@ -22,6 +22,7 @@ struct SessionRecord {
     QString status = QStringLiteral("in_progress");
     QString updatedAtIso;
     QString finishedAtIso;
+    QVector<MoveRecord> moveRecords;
     QStringList moves;
     QString finalFen;
     qint64 whiteTimeMs = -1;

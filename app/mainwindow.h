@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "app_state.h"
+#include "game_replay.h"
 #include "game_controller.h"
 #include "history_repository.h"
 #include "session_record.h"
@@ -70,6 +71,15 @@ private:
     void updateHistoryDetails();
     void openSelectedHistoryPgn();
     void openSelectedHistoryDirectory();
+    void openReplayFile();
+    void replaySelectedHistory();
+    bool beginReplay(const QVector<ReplayGame>& games,
+                     int initialGameIndex = 0);
+    bool loadReplayGame(int index);
+    void navigateReplayTo(int ply);
+    void updateReplayUi(Xake::Move animatedMove = Xake::NOMOVE);
+    void updateReplayControls();
+    void leaveReplay(bool resetGamePanel);
     void updateClockUi();
     void updateSideToMoveLabel(const Xake::Position& position);
     void finalizeMatchRecord(const QString& status,
@@ -97,5 +107,8 @@ private:
     QString m_matchRecordPath;
     bool m_hasActiveMatchRecord = false;
     QVector<HistoryEntry> m_historyEntries;
+    QVector<ReplayGame> m_replayGames;
+    GameReplay m_replay;
+    bool m_replayActive = false;
 };
 #endif // MAINWINDOW_H

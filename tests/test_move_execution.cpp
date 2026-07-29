@@ -169,6 +169,13 @@ void TestMoveExecution::controllerTracksExecutedMoves()
 
     QCOMPARE(controller.moveHistoryUci(),
              QStringList({QStringLiteral("e2e4"), QStringLiteral("e7e5")}));
+    const QVector<MoveRecord> records = controller.moveRecords();
+    QCOMPARE(records.size(), 2);
+    QCOMPARE(records.at(0).origin, MoveOrigin::Human);
+    QCOMPARE(records.at(0).movedPiece, W_PAWN);
+    QCOMPARE(records.at(0).capturedPiece, NO_PIECE);
+    QCOMPARE(records.at(1).origin, MoveOrigin::Human);
+    QCOMPARE(records.at(1).movedPiece, B_PAWN);
     QCOMPARE(moveSpy.count(), 2);
     QCOMPARE(moveSpy.at(0).at(0).toInt(), 1);
     QCOMPARE(moveSpy.at(0).at(1).toString(), QStringLiteral("e2e4"));
@@ -939,7 +946,10 @@ void TestMoveExecution::controllerStartsAfterOpeningMoves()
     QCOMPARE(controller.moveHistoryUci(),
              QStringList({"e2e4", "e7e5", "g1f3"}));
     QCOMPARE(controller.initialMoveCount(), 3);
-    QCOMPARE(controller.m_moveHistory.size(), 0);
+    QCOMPARE(controller.moveRecords().size(), 3);
+    for (const MoveRecord& record : controller.moveRecords()) {
+        QCOMPARE(record.origin, MoveOrigin::Opening);
+    }
     QCOMPARE(QString::fromStdString(controller.currentPosition().get_FEN()),
              QStringLiteral(
                  "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2"));

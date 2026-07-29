@@ -32,6 +32,13 @@ void TestSessionRecord::writesCompletedMatchState()
     record.finalFen = QStringLiteral(
         "7k/6Q1/6K1/8/8/8/8/8 b - - 1 1");
     record.moves = {QStringLiteral("f7g7")};
+    MoveRecord move;
+    move.uci = QStringLiteral("f7g7");
+    move.movedPiece = Xake::W_QUEEN;
+    move.origin = MoveOrigin::Human;
+    move.whiteTimeBeforeMs = 1500;
+    move.whiteTimeAfterMs = 1234;
+    record.moveRecords = {move};
     record.whiteTimeMs = 1234;
     record.blackTimeMs = 5678;
     record.hasResult = true;
@@ -53,6 +60,12 @@ void TestSessionRecord::writesCompletedMatchState()
     QCOMPARE(root.value(QStringLiteral("moves")).toArray().size(), 1);
     QCOMPARE(root.value(QStringLiteral("moves")).toArray().at(0).toString(),
              QStringLiteral("f7g7"));
+    const QJsonArray moveRecords =
+        root.value(QStringLiteral("moveRecords")).toArray();
+    QCOMPARE(moveRecords.size(), 1);
+    QCOMPARE(moveRecords.at(0).toObject()
+                 .value(QStringLiteral("origin")).toString(),
+             QStringLiteral("human"));
     const QJsonObject gameSettings = root.value(QStringLiteral("match"))
                                          .toObject()
                                          .value(QStringLiteral("game"))

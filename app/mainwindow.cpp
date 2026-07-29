@@ -22,6 +22,7 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDir>
+#include <QFileDialog>
 #include <QEvent>
 #include <QFileInfo>
 #include <QFontDatabase>
@@ -38,6 +39,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QString>
 #include <QStyle>
 #include <QSvgRenderer>
@@ -881,6 +883,16 @@ MainWindow::MainWindow(QWidget *parent)
     ui->pauseButton->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
     ui->stopButton->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
     ui->restartButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    ui->replayFirstButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaSkipBackward));
+    ui->replayPreviousButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaSeekBackward));
+    ui->replayNextButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaSeekForward));
+    ui->replayLastButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaSkipForward));
+    ui->replayCloseButton->setIcon(
+        style()->standardIcon(QStyle::SP_DialogCloseButton));
 
     connect(ui->debugButton, &QPushButton::clicked, this, [this]() {
         openDebugWindow();
@@ -893,6 +905,30 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::restartLastSession);
     connect(ui->historyRefreshButton, &QPushButton::clicked,
             this, &MainWindow::refreshHistory);
+    connect(ui->historyReplayButton, &QPushButton::clicked,
+            this, &MainWindow::replaySelectedHistory);
+    connect(ui->historyLoadReplayButton, &QPushButton::clicked,
+            this, &MainWindow::openReplayFile);
+    connect(ui->replayGameCombo, &QComboBox::currentIndexChanged,
+            this, [this](int index) {
+        if (m_replayActive) {
+            loadReplayGame(index);
+        }
+    });
+    connect(ui->replayFirstButton, &QPushButton::clicked,
+            this, [this]() { navigateReplayTo(0); });
+    connect(ui->replayPreviousButton, &QPushButton::clicked,
+            this, [this]() {
+        navigateReplayTo(m_replay.currentPly() - 1);
+    });
+    connect(ui->replayNextButton, &QPushButton::clicked,
+            this, [this]() {
+        navigateReplayTo(m_replay.currentPly() + 1);
+    });
+    connect(ui->replayLastButton, &QPushButton::clicked,
+            this, [this]() { navigateReplayTo(m_replay.totalPly()); });
+    connect(ui->replayCloseButton, &QPushButton::clicked,
+            this, [this]() { leaveReplay(true); });
     connect(ui->historyFilterEdit, &QLineEdit::textChanged,
             this, [this]() {
         populateHistoryTree();
@@ -969,9 +1005,16 @@ MainWindow::MainWindow(QWidget *parent)
         connect(ui->actionManageApplicationData, &QAction::triggered,
                 this, &MainWindow::manageApplicationData);
     }
+    if (ui->actionOpenReplay) {
+        connect(ui->actionOpenReplay, &QAction::triggered,
+                this, &MainWindow::openReplayFile);
+    }
 
     connect(m_gameController, &GameController::positionChanged, this,
             [this](const Xake::Position& position, Xake::Move lastMove) {
+        if (m_replayActive) {
+            return;
+        }
         if (ui && ui->board) {
             ui->board->setPosition(position, lastMove);
         }
@@ -1211,6 +1254,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     if (ui && ui->board) {
         connect(ui->board, &BoardWidget::moveRequested, this, [this](Xake::Move move) {
+            if (m_replayActive) {
+                return;
+            }
             m_gameController->applyHumanMove(move);
         });
     }
@@ -1298,6 +1344,9 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         if (stillActive && !stopActiveSession()) {
             return false;
         }
+    }
+    if (m_replayActive) {
+        leaveReplay(false);
     }
 
     const OpeningEntry& firstOpening = openings.first();
@@ -1392,6 +1441,7 @@ void MainWindow::finalizeMatchRecord(const QString& status,
     m_matchRecord.updatedAtIso = timestamp;
     m_matchRecord.finishedAtIso = timestamp;
     m_matchRecord.moves = m_gameController->moveHistoryUci();
+    m_matchRecord.moveRecords = m_gameController->moveRecords();
     m_matchRecord.finalFen =
         QString::fromStdString(m_gameController->currentPosition().get_FEN());
     m_matchRecord.whiteTimeMs = m_gameController->remainingTimeMs(WHITE);
@@ -1420,6 +1470,8 @@ void MainWindow::finalizeMatchRecord(const QString& status,
     pgn.opening = m_matchRecord.openingName;
     pgn.timeControl = pgnTimeControl(m_matchRecord.match.game);
     pgn.movesUci = m_matchRecord.moves;
+    pgn.openingMoveCount =
+        static_cast<int>(m_matchRecord.openingMoves.size());
     const QString pgnPath = QFileInfo(m_matchRecordPath)
         .dir()
         .filePath(QStringLiteral("game.pgn"));
@@ -1557,7 +1609,7 @@ void MainWindow::updateSessionControls()
     }
 
     if (ui->board) {
-        bool humanTurn = gameActive && !paused;
+        bool humanTurn = !m_replayActive && gameActive && !paused;
         if (humanTurn) {
             const MatchConfig match = m_gameController->matchConfig();
             const bool whiteToMove =
@@ -1619,6 +1671,11 @@ void MainWindow::clearSessionPanels()
         return;
     }
 
+    m_replayActive = false;
+    m_replay.clear();
+    m_replayGames.clear();
+    ui->replayPanel->hide();
+    ui->replayGameCombo->clear();
     m_gameController->clearFinishedSessionData();
     m_currentOpeningName.clear();
     m_currentOpeningIndex = 0;
@@ -1712,6 +1769,12 @@ void MainWindow::updateGameMoveList()
         return;
     }
 
+    if (m_replayActive) {
+        renderGameMovesInColumns(ui->gameMovesText,
+                                 m_replay.visibleMoves(),
+                                 m_replay.game().openingMoveCount);
+        return;
+    }
     renderGameMovesInColumns(ui->gameMovesText,
                              m_gameController->moveHistoryUci(),
                              m_gameController->initialMoveCount());
@@ -1723,6 +1786,11 @@ void MainWindow::updateCapturedPieces()
         return;
     }
 
+    if (m_replayActive) {
+        ui->capturedPiecesWidget->setCapturedPieces(
+            m_replay.capturedPieces());
+        return;
+    }
     ui->capturedPiecesWidget->setCapturedPieces(
         m_gameController->capturedPieces());
 }
@@ -1896,12 +1964,14 @@ void MainWindow::updateHistoryDetails()
                 : tr("No sessions match the current filter."));
         ui->historyOpenPgnButton->setEnabled(false);
         ui->historyOpenFolderButton->setEnabled(false);
+        ui->historyReplayButton->setEnabled(false);
         return;
     }
 
     const int entryIndex =
         selected->data(0, kHistoryEntryRole).toInt();
     if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        ui->historyReplayButton->setEnabled(false);
         return;
     }
 
@@ -1917,6 +1987,14 @@ void MainWindow::updateHistoryDetails()
         && QFileInfo::exists(entry.pgnFilePath));
     ui->historyOpenFolderButton->setEnabled(
         QDir(entry.directoryPath).exists());
+    const bool hasRecord = !entry.recordFilePath.isEmpty()
+        && QFileInfo::exists(entry.recordFilePath);
+    const bool hasPgn = !entry.pgnFilePath.isEmpty()
+        && QFileInfo::exists(entry.pgnFilePath);
+    ui->historyReplayButton->setEnabled(
+        (hasRecord || hasPgn)
+        && (entry.type != HistorySessionType::Tournament
+            || !entry.games.isEmpty() || hasPgn));
 }
 
 void MainWindow::openSelectedHistoryPgn()
@@ -1972,12 +2050,276 @@ void MainWindow::openSelectedHistoryDirectory()
     }
 }
 
+void MainWindow::openReplayFile()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        tr("Open game replay"),
+        QString(),
+        tr("Replay files (*.json *.pgn *.epd *.edp);;"
+           "Xake records (*.json);;PGN games (*.pgn);;"
+           "EPD positions (*.epd *.edp);;All files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const ReplayLoadResult loaded = loadReplayFile(path);
+    if (!loaded.success()) {
+        QMessageBox::warning(this, tr("Open replay"), loaded.error);
+        return;
+    }
+    beginReplay(loaded.games);
+}
+
+void MainWindow::replaySelectedHistory()
+{
+    if (!ui || !ui->historyTree) {
+        return;
+    }
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected) {
+        return;
+    }
+    const int entryIndex =
+        selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const HistoryEntry& entry = m_historyEntries.at(entryIndex);
+    QString path = entry.recordFilePath;
+    if (path.isEmpty() || !QFileInfo::exists(path)) {
+        path = entry.pgnFilePath;
+    }
+    ReplayLoadResult loaded = loadReplayFile(path);
+    if (!loaded.success()
+        && !entry.pgnFilePath.isEmpty()
+        && QFileInfo::exists(entry.pgnFilePath)
+        && QFileInfo(entry.pgnFilePath).absoluteFilePath()
+            != QFileInfo(path).absoluteFilePath()) {
+        loaded = loadReplayFile(entry.pgnFilePath);
+    }
+    if (!loaded.success()) {
+        QMessageBox::warning(this, tr("Replay history"), loaded.error);
+        return;
+    }
+
+    int gameIndex = selected->data(0, kHistoryGameRole).toInt();
+    if (gameIndex < 0) {
+        gameIndex = 0;
+    }
+    beginReplay(loaded.games, gameIndex);
+}
+
+bool MainWindow::beginReplay(const QVector<ReplayGame>& games,
+                             int initialGameIndex)
+{
+    if (games.isEmpty()) {
+        return false;
+    }
+
+    for (int index = 0; index < games.size(); ++index) {
+        GameReplay validator;
+        QString error;
+        if (!validator.load(games.at(index), &error)) {
+            QMessageBox::warning(
+                this,
+                tr("Invalid replay"),
+                tr("Game %1 could not be loaded:\n%2")
+                    .arg(games.at(index).gameNumber)
+                    .arg(error));
+            return false;
+        }
+    }
+
+    const bool tournamentActive =
+        m_tournamentRunner && m_tournamentRunner->isActive();
+    const bool gameActive =
+        m_gameController && m_gameController->isActive();
+    if (!m_replayActive && (tournamentActive || gameActive)) {
+        const QString sessionName =
+            tournamentActive ? tr("tournament") : tr("game");
+        const QMessageBox::StandardButton answer = QMessageBox::question(
+            this,
+            tr("Session in progress"),
+            tr("A %1 is currently in progress.\n\n"
+               "Do you want to stop it and open the replay?")
+                .arg(sessionName),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+        if (answer != QMessageBox::Yes || !stopActiveSession()) {
+            return false;
+        }
+    }
+
+    clearSessionPanels();
+    m_replayGames = games;
+    m_replayActive = true;
+    ui->board->setMoveInputEnabled(false);
+    ui->replayPanel->show();
+
+    {
+        const QSignalBlocker blocker(ui->replayGameCombo);
+        ui->replayGameCombo->clear();
+        for (const ReplayGame& game : games) {
+            QString label = tr("Game %1").arg(game.gameNumber);
+            if (!game.white.isEmpty() || !game.black.isEmpty()) {
+                label += QStringLiteral(" | %1 - %2")
+                    .arg(game.white.isEmpty() ? tr("White") : game.white,
+                         game.black.isEmpty() ? tr("Black") : game.black);
+            } else if (!game.title.isEmpty()) {
+                label += QStringLiteral(" | %1").arg(game.title);
+            }
+            if (!game.result.isEmpty()) {
+                label += QStringLiteral(" | %1").arg(game.result);
+            }
+            ui->replayGameCombo->addItem(label);
+        }
+        initialGameIndex = qBound(
+            0, initialGameIndex, static_cast<int>(games.size()) - 1);
+        ui->replayGameCombo->setCurrentIndex(initialGameIndex);
+    }
+    ui->replayGameCombo->setEnabled(games.size() > 1);
+
+    if (!loadReplayGame(initialGameIndex)) {
+        leaveReplay(false);
+        return false;
+    }
+    ui->tabWidget->setCurrentWidget(ui->tabGame);
+    updateSessionControls();
+    return true;
+}
+
+bool MainWindow::loadReplayGame(int index)
+{
+    if (!m_replayActive
+        || index < 0 || index >= m_replayGames.size()) {
+        return false;
+    }
+
+    QString error;
+    if (!m_replay.load(m_replayGames.at(index), &error)) {
+        QMessageBox::warning(this, tr("Invalid replay"), error);
+        return false;
+    }
+
+    {
+        const QSignalBlocker blocker(ui->replayGameCombo);
+        ui->replayGameCombo->setCurrentIndex(index);
+    }
+    const ReplayGame& game = m_replay.game();
+    const QString white =
+        game.white.isEmpty() ? tr("White") : game.white;
+    const QString black =
+        game.black.isEmpty() ? tr("Black") : game.black;
+    ui->labelWhitePlayer->setText(white);
+    ui->labelBlackPlayer->setText(black);
+    ui->labelReplayTitle->setText(
+        game.result.isEmpty()
+            ? tr("Replay | %1 - %2").arg(white, black)
+            : tr("Replay | %1 - %2 | %3")
+                  .arg(white, black, game.result));
+    m_currentOpeningName = game.openingName;
+    m_currentOpeningIndex = game.gameNumber;
+    m_currentOpeningCount = 1;
+    updateGameOpeningLabel();
+    navigateReplayTo(0);
+    if (ui->statusbar) {
+        ui->statusbar->showMessage(
+            tr("Replay loaded: game %1, %n move(s).",
+               nullptr,
+               m_replay.totalPly())
+                .arg(game.gameNumber),
+            5000);
+    }
+    return true;
+}
+
+void MainWindow::navigateReplayTo(int ply)
+{
+    if (!m_replayActive
+        || ply < 0 || ply > m_replay.totalPly()) {
+        return;
+    }
+
+    const int previousPly = m_replay.currentPly();
+    if (!m_replay.goToPly(ply)) {
+        QMessageBox::warning(
+            this,
+            tr("Replay error"),
+            tr("The replay position could not be reconstructed."));
+        return;
+    }
+    const Move animatedMove =
+        ply == previousPly + 1 ? m_replay.lastMove() : NOMOVE;
+    updateReplayUi(animatedMove);
+}
+
+void MainWindow::updateReplayUi(Move animatedMove)
+{
+    if (!m_replayActive || !ui) {
+        return;
+    }
+    ui->board->setPosition(m_replay.position(), animatedMove);
+    updateSideToMoveLabel(m_replay.position());
+    updateGameMoveList();
+    updateCapturedPieces();
+    updateClockUi();
+    updateReplayControls();
+}
+
+void MainWindow::updateReplayControls()
+{
+    if (!m_replayActive || !ui) {
+        return;
+    }
+    const int current = m_replay.currentPly();
+    const int total = m_replay.totalPly();
+    ui->labelReplayProgress->setText(
+        tr("Ply %1 / %2").arg(current).arg(total));
+    ui->replayFirstButton->setEnabled(current > 0);
+    ui->replayPreviousButton->setEnabled(current > 0);
+    ui->replayNextButton->setEnabled(current < total);
+    ui->replayLastButton->setEnabled(current < total);
+}
+
+void MainWindow::leaveReplay(bool resetGamePanel)
+{
+    if (!m_replayActive) {
+        return;
+    }
+
+    if (resetGamePanel) {
+        clearSessionPanels();
+    } else {
+        m_replayActive = false;
+        m_replay.clear();
+        m_replayGames.clear();
+        ui->replayPanel->hide();
+        ui->replayGameCombo->clear();
+    }
+
+    updateSessionControls();
+
+    if (resetGamePanel && ui->statusbar) {
+        ui->statusbar->showMessage(tr("Replay closed."), 3000);
+    }
+}
+
 void MainWindow::updateGameOpeningLabel()
 {
     if (!ui || !ui->labelGameOpening) {
         return;
     }
 
+    if (m_replayActive) {
+        ui->labelGameOpening->setText(
+            m_currentOpeningName.isEmpty()
+                ? tr("Replay | Opening: -")
+                : tr("Replay | Opening: %1").arg(m_currentOpeningName));
+        return;
+    }
     if (m_currentOpeningName.isEmpty()) {
         ui->labelGameOpening->setText(tr("Opening: -"));
         return;
@@ -2274,6 +2616,17 @@ void MainWindow::updateClockUi()
         return;
     }
 
+    if (m_replayActive) {
+        const qint64 whiteMs = m_replay.whiteTimeMs();
+        const qint64 blackMs = m_replay.blackTimeMs();
+        ui->whiteTimeLcd->display(
+            whiteMs >= 0 ? formatClockMs(whiteMs)
+                         : QStringLiteral("--:--"));
+        ui->blackTimeLcd->display(
+            blackMs >= 0 ? formatClockMs(blackMs)
+                         : QStringLiteral("--:--"));
+        return;
+    }
     if (!m_gameController->isActive() || !m_gameController->timeControlEnabled()) {
         ui->whiteTimeLcd->display("--:--");
         ui->blackTimeLcd->display("--:--");

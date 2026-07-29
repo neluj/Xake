@@ -10,6 +10,12 @@ struct OpeningEntry {
     QString startFen;
     QString finalFen;
     QStringList movesUci;
+    QString event;
+    QString white;
+    QString black;
+    QString result;
+    QString round;
+    int openingMoveCount = 0;
 };
 
 bool loadOpeningFile(const QString& filePath,
