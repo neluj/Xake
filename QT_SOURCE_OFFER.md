@@ -1,9 +1,9 @@
 # Qt Corresponding Source Offer
 
-Xake 0.1.0 Windows packages dynamically link to unmodified Qt 6.10.3 libraries
+Xake Windows packages dynamically link to unmodified Qt 6.10.3 libraries
 built from the Qt open-source distribution.
 
-For at least three years after a Xake 0.1.0 binary package is distributed, the
+For at least three years after each Xake binary package is distributed, the
 Xake project will provide, on request and for no more than the cost of physically
 providing the source, the complete corresponding source for the Qt libraries
 included in that package, including the scripts needed to control compilation

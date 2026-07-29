@@ -15,7 +15,7 @@ cmake --build build-release --target package
 
 The package target installs `Xake.exe`, invokes Qt's deployment tooling
 (`windeployqt` on Windows), installs legal notices, and creates a ZIP archive.
-Official 0.1.0 packages use Qt 6.10.3 with MinGW 13.1, matching CI.
+Official 0.2.0 packages use Qt 6.10.3 with MinGW 13.1, matching CI.
 
 ## Isolated Smoke Test
 
@@ -40,7 +40,7 @@ virtual machine that has neither Qt nor MinGW installed:
 2. Confirm `where.exe qmake`, `where.exe windeployqt`, and
    `where.exe libstdc++-6.dll` find nothing outside the package.
 3. Start `bin\Xake.exe`.
-4. Open About and verify version 0.1.0.
+4. Open About and verify version 0.2.0.
 5. Configure two known UCI engines and complete a short timed game.
 6. Run a two-game tournament with color alternation and an opening file.
 7. Verify History, PGN, JSON report, unified UCI log, pause, stop, and restart.
@@ -57,5 +57,5 @@ runtime dependencies.
 - The clean-VM validation above passes.
 - The archive contains `LICENSE`, `THIRD_PARTY_NOTICES.md`,
   `QT_SOURCE_OFFER.md`, and `licenses`.
-- The executable properties report product and file version 0.1.0.
+- The executable properties report product and file version 0.2.0.
 - The final archive checksum is recorded in the release notes.
