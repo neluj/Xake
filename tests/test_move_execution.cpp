@@ -104,6 +104,10 @@ class TestMoveExecution : public QObject
 
 private slots:
     void controllerTracksExecutedMoves();
+    void controllerTracksCapturedPiecesInOrder();
+    void controllerTracksEnPassantCapture();
+    void controllerTracksCaptureFromOpeningMoves();
+    void controllerClearsFinishedSessionData();
     void moveGenIncludesKnightMovesFromStart();
     void doMoveAppliesLegalGeneratedMove();
     void doMoveRejectsPseudoIllegalPinnedMove();
@@ -170,6 +174,69 @@ void TestMoveExecution::controllerTracksExecutedMoves()
     QCOMPARE(moveSpy.at(0).at(1).toString(), QStringLiteral("e2e4"));
     QCOMPARE(moveSpy.at(1).at(0).toInt(), 2);
     QCOMPARE(moveSpy.at(1).at(1).toString(), QStringLiteral("e7e5"));
+}
+
+void TestMoveExecution::controllerTracksCapturedPiecesInOrder()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(
+        humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+        kStartFen));
+
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('d', '7', 'd', '5')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '4', 'd', '5')));
+    QVERIFY(controller.applyHumanMove(makeCandidate('d', '8', 'd', '5')));
+
+    QCOMPARE(controller.capturedPieces(),
+             QVector<Piece>({B_PAWN, W_PAWN}));
+}
+
+void TestMoveExecution::controllerTracksEnPassantCapture()
+{
+    constexpr char kEnPassantFen[] =
+        "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1";
+    GameController controller;
+    QVERIFY(controller.startMatch(
+        humanVsHumanConfig(QString::fromLatin1(kEnPassantFen)),
+        kEnPassantFen));
+
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '5', 'd', '6')));
+    QCOMPARE(controller.capturedPieces(), QVector<Piece>({B_PAWN}));
+}
+
+void TestMoveExecution::controllerTracksCaptureFromOpeningMoves()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(
+        humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+        kStartFen,
+        QString(),
+        QString(),
+        0,
+        QStringList({"e2e4", "d7d5", "e4d5"})));
+
+    QCOMPARE(controller.capturedPieces(), QVector<Piece>({B_PAWN}));
+}
+
+void TestMoveExecution::controllerClearsFinishedSessionData()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(
+        timedHumanVsHumanConfig(QString::fromLatin1(kStartFen), 60, 1),
+        kStartFen));
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+    QVERIFY(!controller.clearFinishedSessionData());
+
+    controller.stopMatch();
+    QVERIFY(controller.clearFinishedSessionData());
+
+    QVERIFY(controller.moveHistoryUci().isEmpty());
+    QVERIFY(controller.capturedPieces().isEmpty());
+    QCOMPARE(controller.currentPosition().get_FEN(), std::string(kStartFen));
+    QVERIFY(!controller.timeControlEnabled());
+    QCOMPARE(controller.remainingTimeMs(WHITE), qint64(0));
+    QCOMPARE(controller.remainingTimeMs(BLACK), qint64(0));
 }
 
 void TestMoveExecution::doMoveAppliesLegalGeneratedMove()

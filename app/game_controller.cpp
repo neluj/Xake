@@ -165,6 +165,7 @@ bool GameController::startMatch(const MatchConfig& config,
     stopEngines();
     m_uciMoves.clear();
     m_moveHistory.clear();
+    m_capturedPieces.clear();
     m_initialMoveCount = 0;
     m_paused = false;
     if (m_flagTimer) {
@@ -352,6 +353,11 @@ QStringList GameController::moveHistoryUci() const
     return m_uciMoves;
 }
 
+QVector<Piece> GameController::capturedPieces() const
+{
+    return m_capturedPieces;
+}
+
 int GameController::initialMoveCount() const
 {
     return m_initialMoveCount;
@@ -365,6 +371,43 @@ QStringList GameController::communicationHistory() const
 QString GameController::communicationLogFilePath() const
 {
     return m_communicationLogFile.fileName();
+}
+
+void GameController::closeCommunicationLog()
+{
+    if (m_communicationLogFile.isOpen()) {
+        m_communicationLogFile.flush();
+        m_communicationLogFile.close();
+    }
+    m_communicationLogFile.setFileName(QString());
+    m_communicationHistory.clear();
+    m_communicationLogErrorReported = false;
+    emit communicationHistoryReset();
+}
+
+bool GameController::clearFinishedSessionData()
+{
+    if (m_active || !m_position.set_FEN(kStartFen)) {
+        return false;
+    }
+
+    m_config = MatchConfig{};
+    m_uciMoves.clear();
+    m_moveHistory.clear();
+    m_capturedPieces.clear();
+    m_initialMoveCount = 0;
+    m_baseIsStartpos = true;
+    m_baseFen = kStartFen;
+    m_timeControlEnabled = false;
+    m_whiteTimeMs = 0;
+    m_blackTimeMs = 0;
+    m_incrementMs = 0;
+    m_timerRunning = false;
+    m_paused = false;
+    m_logDir.clear();
+    m_logTag.clear();
+    m_maxFullMoves = 0;
+    return true;
 }
 
 bool GameController::timeControlEnabled() const
@@ -572,10 +615,18 @@ bool GameController::applyMove(Move move, Move* appliedMove)
         return false;
     }
 
+    Piece captured = captured_piece(legalMove);
+    if (move_special(legalMove) == ENPASSANT) {
+        captured = make_piece(~m_position.get_side_to_move(), PAWN);
+    }
+
     if (!m_position.do_move(legalMove)) {
         return false;
     }
 
+    if (captured != NO_PIECE) {
+        m_capturedPieces.append(captured);
+    }
     if (appliedMove) {
         *appliedMove = legalMove;
     }

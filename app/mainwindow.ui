@@ -189,6 +189,37 @@
              </property>
             </widget>
            </item>
+           <item>
+            <widget class="QLabel" name="labelCapturedPiecesDivider">
+             <property name="font">
+              <font>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>---------- Captured pieces ----------</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="CapturedPiecesWidget" name="capturedPiecesWidget" native="true">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>88</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>112</height>
+              </size>
+             </property>
+            </widget>
+           </item>
           </layout>
          </widget>
          <widget class="QWidget" name="tabOutput">
@@ -714,7 +745,14 @@
     </property>
     <addaction name="actionAbout"/>
    </widget>
+   <widget class="QMenu" name="menuSettings">
+    <property name="title">
+     <string>Settings</string>
+    </property>
+    <addaction name="actionManageApplicationData"/>
+   </widget>
    <addaction name="menuPlay"/>
+   <addaction name="menuSettings"/>
    <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
@@ -742,12 +780,26 @@
     <enum>QAction::AboutRole</enum>
    </property>
   </action>
+  <action name="actionManageApplicationData">
+   <property name="text">
+    <string>Manage application data...</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
    <class>BoardWidget</class>
    <extends>QWidget</extends>
    <header>boardwidget.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>CapturedPiecesWidget</class>
+   <extends>QWidget</extends>
+   <header>captured_pieces_widget.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

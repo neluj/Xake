@@ -107,9 +107,12 @@ public:
     MatchConfig matchConfig() const;
     Xake::Position currentPosition() const;
     QStringList moveHistoryUci() const;
+    QVector<Xake::Piece> capturedPieces() const;
     int initialMoveCount() const;
     QStringList communicationHistory() const;
     QString communicationLogFilePath() const;
+    void closeCommunicationLog();
+    bool clearFinishedSessionData();
     bool timeControlEnabled() const;
     qint64 remainingTimeMs(Xake::Color side) const;
 
@@ -199,6 +202,7 @@ private:
     std::string m_baseFen;
     QStringList m_uciMoves;
     QVector<Xake::Move> m_moveHistory;
+    QVector<Xake::Piece> m_capturedPieces;
     int m_initialMoveCount = 0;
     bool m_timeControlEnabled = false;
     qint64 m_whiteTimeMs = 0;

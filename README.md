@@ -12,16 +12,16 @@
   </p>
 </div>
 
-Xake 0.1.0 is a desktop chess GUI for playing games and running matches between
+Xake 0.2.0 is a desktop chess GUI for playing games and running matches between
 UCI engines. It validates moves with its own legal move generator, manages chess
-clocks, loads opening suites, records sessions, and shows engine communication
-for diagnosis.
+clocks, loads opening suites, records sessions, displays captured material, and
+shows engine communication for diagnosis.
 
 ## Installation
 
 The supported binary package is Windows x86-64:
 
-1. Download the `Xake-0.1.0-Windows-*.zip` package.
+1. Download the `Xake-0.2.0-Windows-*.zip` package.
 2. Extract the complete archive to a writable directory.
 3. Run `bin/Xake.exe`.
 
@@ -107,6 +107,11 @@ The History tab reads these records. The Output tab displays current engine
 output, and the Debug window displays the unified UCI communication log.
 Application settings are stored by `QSettings`; on Windows this is under
 `HKEY_CURRENT_USER\Software\Xake\Xake`.
+
+Use **Settings > Manage application data...** to remove records, PGN files,
+communication logs, or saved settings independently. Selecting everything
+also removes Xake's empty local-data directories; external engines and opening
+files are never deleted.
 
 ## Testing
 

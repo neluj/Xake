@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "boardwidget.h"
+#include "captured_pieces_widget.h"
 #include "move.h"
 #include "position.h"
 
@@ -36,6 +37,7 @@ private slots:
     void selectionProvidesLegalDestinations();
     void illegalDestinationIsIgnored();
     void disabledInputIgnoresClicks();
+    void capturedPiecesAreGroupedByAscendingValue();
 
 private:
     static QPoint squareCenter(BoardWidget& board, int square);
@@ -142,6 +144,27 @@ void TestBoardWidget::disabledInputIgnoresClicks()
     QCOMPARE(requestCount, 0);
     QCOMPARE(board.m_selectedSq, -1);
     QVERIFY(board.m_legalMoves.isEmpty());
+}
+
+void TestBoardWidget::capturedPiecesAreGroupedByAscendingValue()
+{
+    CapturedPiecesWidget widget;
+    widget.setCapturedPieces(
+        {W_PAWN, B_PAWN, W_KNIGHT, B_ROOK, W_ROOK,
+         B_QUEEN, W_BISHOP, B_BISHOP, W_QUEEN, W_PAWN});
+
+    QCOMPARE(widget.piecesForColor(WHITE),
+             QVector<Piece>(
+                 {W_PAWN, W_PAWN, W_KNIGHT, W_BISHOP,
+                  W_ROOK, W_QUEEN}));
+    QCOMPARE(widget.piecesForColor(BLACK),
+             QVector<Piece>({B_PAWN, B_BISHOP, B_ROOK, B_QUEEN}));
+
+    widget.resize(widget.sizeHint());
+    QPixmap rendered(widget.size());
+    rendered.fill(Qt::transparent);
+    widget.render(&rendered);
+    QVERIFY(!rendered.isNull());
 }
 
 QTEST_MAIN(TestBoardWidget)

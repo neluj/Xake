@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-This document applies to Xake 0.1.0. It is an engineering record, not legal
-advice.
+This document applies to Xake Windows binary distributions. It is an
+engineering record, not legal advice.
 
 ## Qt
 
