@@ -1636,9 +1636,6 @@ void MainWindow::setTournamentTabActive(bool active)
         ui->tabWidget->setCurrentIndex(0);
     }
     ui->tabWidget->setTabEnabled(index, active);
-    if (active) {
-        ui->tabWidget->setCurrentIndex(index);
-    }
 }
 
 void MainWindow::clearTournamentPanel()
