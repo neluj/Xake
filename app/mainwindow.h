@@ -52,6 +52,7 @@ private:
     void updateSessionControls();
     void setTournamentTabActive(bool active);
     void clearTournamentPanel();
+    void clearSessionPanels();
     void resetTournamentPanel(int totalGames);
     void updateTournamentStandings();
     void updateTournamentHistory();
@@ -61,6 +62,7 @@ private:
     void updateEngineOutputPanels(const MatchConfig& match);
     void updateDebugLogPath();
     void openDebugWindow();
+    void manageApplicationData();
     void showAboutDialog();
     void refreshHistory();
     void populateHistoryTree();

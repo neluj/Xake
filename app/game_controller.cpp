@@ -367,6 +367,42 @@ QString GameController::communicationLogFilePath() const
     return m_communicationLogFile.fileName();
 }
 
+void GameController::closeCommunicationLog()
+{
+    if (m_communicationLogFile.isOpen()) {
+        m_communicationLogFile.flush();
+        m_communicationLogFile.close();
+    }
+    m_communicationLogFile.setFileName(QString());
+    m_communicationHistory.clear();
+    m_communicationLogErrorReported = false;
+    emit communicationHistoryReset();
+}
+
+bool GameController::clearFinishedSessionData()
+{
+    if (m_active || !m_position.set_FEN(kStartFen)) {
+        return false;
+    }
+
+    m_config = MatchConfig{};
+    m_uciMoves.clear();
+    m_moveHistory.clear();
+    m_initialMoveCount = 0;
+    m_baseIsStartpos = true;
+    m_baseFen = kStartFen;
+    m_timeControlEnabled = false;
+    m_whiteTimeMs = 0;
+    m_blackTimeMs = 0;
+    m_incrementMs = 0;
+    m_timerRunning = false;
+    m_paused = false;
+    m_logDir.clear();
+    m_logTag.clear();
+    m_maxFullMoves = 0;
+    return true;
+}
+
 bool GameController::timeControlEnabled() const
 {
     return m_timeControlEnabled;

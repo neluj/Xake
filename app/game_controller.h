@@ -110,6 +110,8 @@ public:
     int initialMoveCount() const;
     QStringList communicationHistory() const;
     QString communicationLogFilePath() const;
+    void closeCommunicationLog();
+    bool clearFinishedSessionData();
     bool timeControlEnabled() const;
     qint64 remainingTimeMs(Xake::Color side) const;
 

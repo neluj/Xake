@@ -104,6 +104,7 @@ class TestMoveExecution : public QObject
 
 private slots:
     void controllerTracksExecutedMoves();
+    void controllerClearsFinishedSessionData();
     void moveGenIncludesKnightMovesFromStart();
     void doMoveAppliesLegalGeneratedMove();
     void doMoveRejectsPseudoIllegalPinnedMove();
@@ -170,6 +171,25 @@ void TestMoveExecution::controllerTracksExecutedMoves()
     QCOMPARE(moveSpy.at(0).at(1).toString(), QStringLiteral("e2e4"));
     QCOMPARE(moveSpy.at(1).at(0).toInt(), 2);
     QCOMPARE(moveSpy.at(1).at(1).toString(), QStringLiteral("e7e5"));
+}
+
+void TestMoveExecution::controllerClearsFinishedSessionData()
+{
+    GameController controller;
+    QVERIFY(controller.startMatch(
+        timedHumanVsHumanConfig(QString::fromLatin1(kStartFen), 60, 1),
+        kStartFen));
+    QVERIFY(controller.applyHumanMove(makeCandidate('e', '2', 'e', '4')));
+    QVERIFY(!controller.clearFinishedSessionData());
+
+    controller.stopMatch();
+    QVERIFY(controller.clearFinishedSessionData());
+
+    QVERIFY(controller.moveHistoryUci().isEmpty());
+    QCOMPARE(controller.currentPosition().get_FEN(), std::string(kStartFen));
+    QVERIFY(!controller.timeControlEnabled());
+    QCOMPARE(controller.remainingTimeMs(WHITE), qint64(0));
+    QCOMPARE(controller.remainingTimeMs(BLACK), qint64(0));
 }
 
 void TestMoveExecution::doMoveAppliesLegalGeneratedMove()

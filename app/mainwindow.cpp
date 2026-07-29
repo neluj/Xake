@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 
+#include "application_data.h"
+#include "application_data_dialog.h"
 #include "app_settings.h"
 #include "single_game_dialog.h"
 #include "history_repository.h"
@@ -962,6 +964,10 @@ MainWindow::MainWindow(QWidget *parent)
         connect(ui->actionAbout, &QAction::triggered,
                 this, &MainWindow::showAboutDialog);
     }
+    if (ui->actionManageApplicationData) {
+        connect(ui->actionManageApplicationData, &QAction::triggered,
+                this, &MainWindow::manageApplicationData);
+    }
 
     connect(m_gameController, &GameController::positionChanged, this,
             [this](const Xake::Position& position, Xake::Move lastMove) {
@@ -1542,6 +1548,9 @@ void MainWindow::updateSessionControls()
                                     : QStyle::SP_MediaPause));
     ui->stopButton->setEnabled(active);
     ui->restartButton->setEnabled(m_lastSessionKind != SessionKind::None);
+    if (ui->actionManageApplicationData) {
+        ui->actionManageApplicationData->setEnabled(!active);
+    }
 
     if (ui->board) {
         bool humanTurn = gameActive && !paused;
@@ -1598,6 +1607,37 @@ void MainWindow::clearTournamentPanel()
     if (ui->tournamentHistoryText) {
         ui->tournamentHistoryText->clear();
     }
+}
+
+void MainWindow::clearSessionPanels()
+{
+    if (!ui) {
+        return;
+    }
+
+    m_gameController->clearFinishedSessionData();
+    m_currentOpeningName.clear();
+    m_currentOpeningIndex = 0;
+    m_currentOpeningCount = 0;
+    m_matchRecord = SessionRecord{};
+    m_matchRecordPath.clear();
+    m_hasActiveMatchRecord = false;
+
+    ui->board->setMoveInputEnabled(false);
+    ui->board->setFromFenString(kStartFen);
+    ui->labelWhitePlayer->clear();
+    ui->labelBlackPlayer->clear();
+    ui->labelSideToMove->clear();
+    ui->labelGameOpening->setText(tr("Opening: -"));
+    ui->gameMovesText->clear();
+    ui->labelWhiteEngineOutput->setText(tr("White"));
+    ui->labelBlackEngineOutput->setText(tr("Black"));
+    ui->whiteEngineOutputText->clear();
+    ui->blackEngineOutputText->clear();
+
+    clearTournamentPanel();
+    setTournamentTabActive(false);
+    updateClockUi();
 }
 
 void MainWindow::resetTournamentPanel(int totalGames)
@@ -2034,6 +2074,146 @@ void MainWindow::openDebugWindow()
     });
     updateDebugLogPath();
     dialog->show();
+}
+
+void MainWindow::manageApplicationData()
+{
+    const bool active =
+        (m_tournamentRunner && m_tournamentRunner->isActive())
+        || (m_gameController && m_gameController->isActive());
+    if (active) {
+        QMessageBox::warning(
+            this,
+            tr("Manage application data"),
+            tr("Stop the current game or tournament before deleting "
+               "application data."));
+        return;
+    }
+
+    const QString dataDirectory = applicationDataDir();
+    const ApplicationDataSummary summary =
+        inspectApplicationData(dataDirectory);
+    ApplicationDataDialog dialog(dataDirectory, summary, this);
+    connect(&dialog,
+            &ApplicationDataDialog::openDataFolderRequested,
+            this,
+            [this, dataDirectory]() {
+        if (!QDesktopServices::openUrl(
+                QUrl::fromLocalFile(dataDirectory))) {
+            QMessageBox::warning(
+                this,
+                tr("Open session files folder"),
+                tr("The system could not open the session files folder."));
+        }
+    });
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const ApplicationDataSelection selection = dialog.selection();
+    if (!selection.anySelected()) {
+        return;
+    }
+
+    QStringList selectedCategories;
+    if (selection.records) {
+        selectedCategories.append(tr("- Game and tournament records"));
+    }
+    if (selection.pgnFiles) {
+        selectedCategories.append(tr("- Exported PGN files"));
+    }
+    if (selection.communicationLogs) {
+        selectedCategories.append(tr("- Engine communication logs"));
+    }
+    if (selection.settings) {
+        selectedCategories.append(tr("- Saved settings and engine paths"));
+    }
+
+    QString confirmationText =
+        tr("The following data will be permanently deleted:\n\n%1\n\n"
+           "This action cannot be undone.")
+            .arg(selectedCategories.join(QLatin1Char('\n')));
+    if (selection.allSelected()) {
+        confirmationText +=
+            tr("\n\nThe complete Xake data directory will be removed, "
+               "including any other files stored there.");
+    }
+
+    QMessageBox confirmation(
+        QMessageBox::Warning,
+        tr("Delete application data"),
+        confirmationText,
+        QMessageBox::NoButton,
+        this);
+    QPushButton *deleteButton = confirmation.addButton(
+        tr("Delete selected data"),
+        QMessageBox::DestructiveRole);
+    QPushButton *cancelButton = confirmation.addButton(
+        QMessageBox::Cancel);
+    confirmation.setDefaultButton(cancelButton);
+    confirmation.setEscapeButton(cancelButton);
+    confirmation.exec();
+    if (confirmation.clickedButton() != deleteButton) {
+        return;
+    }
+
+    if (selection.communicationLogs && m_gameController) {
+        if (m_debugDialog) {
+            m_debugDialog->close();
+        }
+        m_gameController->closeCommunicationLog();
+    }
+
+    QSettings settings;
+    const ApplicationDataDeletionResult result =
+        deleteApplicationData(dataDirectory,
+                              selection,
+                              settings,
+                              true);
+
+    if (selection.settings && result.settingsCleared) {
+        m_state = AppState{};
+        m_lastSessionKind = SessionKind::None;
+    }
+    if (selection.records || selection.pgnFiles) {
+        refreshHistory();
+    }
+    updateSessionControls();
+
+    if (!result.succeeded()) {
+        QMessageBox::warning(
+            this,
+            tr("Application data"),
+            tr("Some application data could not be deleted:\n\n%1")
+                .arg(result.errors.join(QLatin1Char('\n'))));
+        return;
+    }
+
+    QString resultText;
+    if (result.deletedFiles > 0) {
+        resultText =
+            tr("Deleted %n stored file(s).",
+               nullptr,
+               result.deletedFiles);
+    } else if (!result.settingsCleared) {
+        resultText = tr("No matching stored files were found.");
+    }
+    if (result.settingsCleared) {
+        if (!resultText.isEmpty()) {
+            resultText += QLatin1Char('\n');
+        }
+        resultText += tr("Saved settings were cleared.");
+    }
+
+    if (selection.allSelected()) {
+        clearSessionPanels();
+    }
+
+    QMessageBox::information(
+        this,
+        tr("Application data deleted"),
+        resultText);
 }
 
 void MainWindow::showAboutDialog()
