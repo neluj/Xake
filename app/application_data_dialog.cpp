@@ -66,12 +66,20 @@ ApplicationDataDialog::ApplicationDataDialog(
     layout->addWidget(description);
 
     auto *pathLabel = new QLabel(
-        tr("Data directory: %1")
+        tr("Session files directory: %1")
             .arg(QDir::toNativeSeparators(dataDirectory)),
         this);
     pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     pathLabel->setWordWrap(true);
     layout->addWidget(pathLabel);
+
+    auto *settingsLocationLabel = new QLabel(
+        tr("Game records, PGN files and communication logs are stored in this "
+           "folder. Saved settings and engine paths are stored separately in "
+           "the Windows Registry."),
+        this);
+    settingsLocationLabel->setWordWrap(true);
+    layout->addWidget(settingsLocationLabel);
 
     auto *summaryLabel = new QLabel(
         tr("%n stored file(s), %1 in total.",
@@ -111,7 +119,7 @@ ApplicationDataDialog::ApplicationDataDialog(
     layout->addWidget(m_logsCheckBox);
 
     m_settingsCheckBox = new QCheckBox(
-        tr("Saved settings and engine paths"),
+        tr("Saved settings and engine paths (Windows Registry)"),
         this);
     m_settingsCheckBox->setObjectName(QStringLiteral("settingsCheckBox"));
     layout->addWidget(m_settingsCheckBox);
@@ -131,7 +139,7 @@ ApplicationDataDialog::ApplicationDataDialog(
 
     auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel, this);
     auto *openButton = buttonBox->addButton(
-        tr("Open data folder"),
+        tr("Open session files folder"),
         QDialogButtonBox::ActionRole);
     openButton->setEnabled(QDir(dataDirectory).exists());
     m_deleteButton = buttonBox->addButton(

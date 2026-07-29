@@ -52,6 +52,7 @@ private:
     void updateSessionControls();
     void setTournamentTabActive(bool active);
     void clearTournamentPanel();
+    void clearSessionPanels();
     void resetTournamentPanel(int totalGames);
     void updateTournamentStandings();
     void updateTournamentHistory();

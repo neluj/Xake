@@ -110,8 +110,8 @@ Application settings are stored by `QSettings`; on Windows this is under
 
 Use **Settings > Manage application data...** to remove records, PGN files,
 communication logs, or saved settings independently. Selecting everything
-also removes Xake's empty local-data directories and closes the application;
-external engines and opening files are never deleted.
+also removes Xake's empty local-data directories; external engines and opening
+files are never deleted.
 
 ## Testing
 

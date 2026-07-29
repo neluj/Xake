@@ -1609,6 +1609,37 @@ void MainWindow::clearTournamentPanel()
     }
 }
 
+void MainWindow::clearSessionPanels()
+{
+    if (!ui) {
+        return;
+    }
+
+    m_gameController->clearFinishedSessionData();
+    m_currentOpeningName.clear();
+    m_currentOpeningIndex = 0;
+    m_currentOpeningCount = 0;
+    m_matchRecord = SessionRecord{};
+    m_matchRecordPath.clear();
+    m_hasActiveMatchRecord = false;
+
+    ui->board->setMoveInputEnabled(false);
+    ui->board->setFromFenString(kStartFen);
+    ui->labelWhitePlayer->clear();
+    ui->labelBlackPlayer->clear();
+    ui->labelSideToMove->clear();
+    ui->labelGameOpening->setText(tr("Opening: -"));
+    ui->gameMovesText->clear();
+    ui->labelWhiteEngineOutput->setText(tr("White"));
+    ui->labelBlackEngineOutput->setText(tr("Black"));
+    ui->whiteEngineOutputText->clear();
+    ui->blackEngineOutputText->clear();
+
+    clearTournamentPanel();
+    setTournamentTabActive(false);
+    updateClockUi();
+}
+
 void MainWindow::resetTournamentPanel(int totalGames)
 {
     if (!ui) {
@@ -2071,8 +2102,8 @@ void MainWindow::manageApplicationData()
                 QUrl::fromLocalFile(dataDirectory))) {
             QMessageBox::warning(
                 this,
-                tr("Open data folder"),
-                tr("The system could not open the application data folder."));
+                tr("Open session files folder"),
+                tr("The system could not open the session files folder."));
         }
     });
 
@@ -2106,8 +2137,7 @@ void MainWindow::manageApplicationData()
     if (selection.allSelected()) {
         confirmationText +=
             tr("\n\nThe complete Xake data directory will be removed, "
-               "including any other files stored there. Xake will close "
-               "after the reset.");
+               "including any other files stored there.");
     }
 
     QMessageBox confirmation(
@@ -2177,13 +2207,7 @@ void MainWindow::manageApplicationData()
     }
 
     if (selection.allSelected()) {
-        resultText += tr("\n\nXake will now close.");
-        QMessageBox::information(
-            this,
-            tr("Application data deleted"),
-            resultText);
-        QApplication::quit();
-        return;
+        clearSessionPanels();
     }
 
     QMessageBox::information(
