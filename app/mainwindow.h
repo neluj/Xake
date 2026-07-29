@@ -69,8 +69,10 @@ private:
     void refreshHistory();
     void populateHistoryTree();
     void updateHistoryDetails();
+    void updateHistoryDeleteButton();
     void openSelectedHistoryPgn();
     void openSelectedHistoryDirectory();
+    void deleteSelectedHistorySession();
     void openReplayFile();
     void replaySelectedHistory();
     bool beginReplay(const QVector<ReplayGame>& games,

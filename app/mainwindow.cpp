@@ -51,6 +51,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -68,6 +69,39 @@ const char kWhiteEngineCommunicationColor[] = "#247C8F";
 const char kBlackEngineCommunicationColor[] = "#B85C2B";
 constexpr int kHistoryEntryRole = Qt::UserRole;
 constexpr int kHistoryGameRole = Qt::UserRole + 1;
+
+Qt::CaseSensitivity pathCaseSensitivity()
+{
+#ifdef Q_OS_WIN
+    return Qt::CaseInsensitive;
+#else
+    return Qt::CaseSensitive;
+#endif
+}
+
+bool pathBelongsToDirectory(const QString& path, const QString& directory)
+{
+    if (path.isEmpty() || directory.isEmpty()) {
+        return false;
+    }
+
+    const QFileInfo directoryInfo(directory);
+    const QFileInfo pathInfo(path);
+    QString directoryPath = directoryInfo.canonicalFilePath();
+    QString candidatePath = pathInfo.canonicalFilePath();
+    if (directoryPath.isEmpty()) {
+        directoryPath = directoryInfo.absoluteFilePath();
+    }
+    if (candidatePath.isEmpty()) {
+        candidatePath = pathInfo.absoluteFilePath();
+    }
+
+    directoryPath = QDir::fromNativeSeparators(QDir::cleanPath(directoryPath));
+    candidatePath = QDir::fromNativeSeparators(QDir::cleanPath(candidatePath));
+    const QString prefix = directoryPath + QLatin1Char('/');
+    return QString::compare(candidatePath, directoryPath, pathCaseSensitivity()) == 0
+        || candidatePath.startsWith(prefix, pathCaseSensitivity());
+}
 
 QPixmap colorIndicatorPixmap(Color color, int size)
 {
@@ -862,6 +896,8 @@ MainWindow::MainWindow(QWidget *parent)
         style()->standardIcon(QStyle::SP_MediaSkipForward));
     ui->replayCloseButton->setIcon(
         style()->standardIcon(QStyle::SP_DialogCloseButton));
+    ui->historyDeleteButton->setIcon(
+        style()->standardIcon(QStyle::SP_TrashIcon));
 
     connect(ui->debugButton, &QPushButton::clicked, this, [this]() {
         openDebugWindow();
@@ -912,6 +948,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::openSelectedHistoryPgn);
     connect(ui->historyOpenFolderButton, &QPushButton::clicked,
             this, &MainWindow::openSelectedHistoryDirectory);
+    connect(ui->historyDeleteButton, &QPushButton::clicked,
+            this, &MainWindow::deleteSelectedHistorySession);
     connect(ui->tabWidget, &QTabWidget::currentChanged,
             this, [this](int index) {
         if (ui->tabWidget->widget(index) == ui->tabHistory) {
@@ -1597,6 +1635,7 @@ void MainWindow::updateSessionControls()
         }
         ui->board->setMoveInputEnabled(humanTurn);
     }
+    updateHistoryDeleteButton();
 }
 
 void MainWindow::setTournamentTabActive(bool active)
@@ -1946,6 +1985,7 @@ void MainWindow::updateHistoryDetails()
         ui->historyOpenPgnButton->setEnabled(false);
         ui->historyOpenFolderButton->setEnabled(false);
         ui->historyReplayButton->setEnabled(false);
+        updateHistoryDeleteButton();
         return;
     }
 
@@ -1953,6 +1993,9 @@ void MainWindow::updateHistoryDetails()
         selected->data(0, kHistoryEntryRole).toInt();
     if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
         ui->historyReplayButton->setEnabled(false);
+        ui->historyOpenPgnButton->setEnabled(false);
+        ui->historyOpenFolderButton->setEnabled(false);
+        updateHistoryDeleteButton();
         return;
     }
 
@@ -1976,6 +2019,59 @@ void MainWindow::updateHistoryDetails()
         (hasRecord || hasPgn)
         && (entry.type != HistorySessionType::Tournament
             || !entry.games.isEmpty() || hasPgn));
+    updateHistoryDeleteButton();
+}
+
+void MainWindow::updateHistoryDeleteButton()
+{
+    if (!ui || !ui->historyTree || !ui->historyDeleteButton) {
+        return;
+    }
+
+    QPushButton *button = ui->historyDeleteButton;
+    button->setEnabled(false);
+    button->setText(tr("Delete session"));
+    button->setToolTip(QString());
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected) {
+        return;
+    }
+
+    const int entryIndex = selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const HistoryEntry& entry = m_historyEntries.at(entryIndex);
+    const int gameIndex = selected->data(0, kHistoryGameRole).toInt();
+    if (gameIndex >= 0) {
+        button->setToolTip(
+            tr("Individual tournament games cannot be deleted. "
+               "Select the tournament instead."));
+        return;
+    }
+
+    button->setText(entry.type == HistorySessionType::Tournament
+                        ? tr("Delete tournament")
+                        : tr("Delete game"));
+    const bool active =
+        (m_tournamentRunner && m_tournamentRunner->isActive())
+        || (m_gameController && m_gameController->isActive());
+    if (active) {
+        button->setToolTip(
+            tr("Stop the current game or tournament before deleting history."));
+        return;
+    }
+
+    if (!isManagedHistorySessionDirectory(sessionsRootDir(),
+                                          entry.directoryPath)) {
+        button->setToolTip(
+            tr("This session is not stored in the managed history directory."));
+        return;
+    }
+
+    button->setEnabled(true);
 }
 
 void MainWindow::openSelectedHistoryPgn()
@@ -2028,6 +2124,123 @@ void MainWindow::openSelectedHistoryDirectory()
             this,
             tr("Open folder"),
             tr("The session folder is not available or could not be opened."));
+    }
+}
+
+void MainWindow::deleteSelectedHistorySession()
+{
+    if (!ui || !ui->historyTree) {
+        return;
+    }
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected || selected->data(0, kHistoryGameRole).toInt() >= 0) {
+        return;
+    }
+
+    const int entryIndex = selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const bool active =
+        (m_tournamentRunner && m_tournamentRunner->isActive())
+        || (m_gameController && m_gameController->isActive());
+    if (active) {
+        QMessageBox::warning(
+            this,
+            tr("Delete history"),
+            tr("Stop the current game or tournament before deleting history."));
+        return;
+    }
+
+    const HistoryEntry entry = m_historyEntries.at(entryIndex);
+    const QString sessionsDirectory = sessionsRootDir();
+    if (!isManagedHistorySessionDirectory(sessionsDirectory,
+                                          entry.directoryPath)) {
+        QMessageBox::warning(
+            this,
+            tr("Delete history"),
+            tr("The selected session is not stored in the managed history "
+               "directory and will not be deleted."));
+        return;
+    }
+
+    const bool tournament =
+        entry.type == HistorySessionType::Tournament;
+    QMessageBox confirmation(
+        QMessageBox::Warning,
+        tournament ? tr("Delete tournament") : tr("Delete game"),
+        tournament
+            ? tr("Delete the selected tournament permanently?")
+            : tr("Delete the selected game permanently?"),
+        QMessageBox::NoButton,
+        this);
+    confirmation.setInformativeText(
+        tr("%1 - %2\n\nAll associated records, PGN files and communication "
+           "logs will be removed. This action cannot be undone.")
+            .arg(entry.player1, entry.player2));
+    QPushButton *deleteButton = confirmation.addButton(
+        tournament ? tr("Delete tournament") : tr("Delete game"),
+        QMessageBox::DestructiveRole);
+    QPushButton *cancelButton =
+        confirmation.addButton(QMessageBox::Cancel);
+    confirmation.setDefaultButton(cancelButton);
+    confirmation.setEscapeButton(cancelButton);
+    confirmation.exec();
+    if (confirmation.clickedButton() != deleteButton) {
+        return;
+    }
+
+    const QString sessionDirectory = entry.directoryPath;
+    const bool replayUsesSession =
+        std::any_of(m_replayGames.cbegin(),
+                    m_replayGames.cend(),
+                    [&sessionDirectory](const ReplayGame& game) {
+        return pathBelongsToDirectory(game.sourcePath, sessionDirectory);
+    });
+    const QString communicationLogPath =
+        m_gameController ? m_gameController->communicationLogFilePath()
+                         : QString();
+    const bool logUsesSession =
+        pathBelongsToDirectory(communicationLogPath, sessionDirectory);
+    const bool displayedSession =
+        replayUsesSession
+        || pathBelongsToDirectory(m_matchRecordPath, sessionDirectory)
+        || (m_tournamentRunner
+            && pathBelongsToDirectory(m_tournamentRunner->reportFilePath(),
+                                      sessionDirectory))
+        || logUsesSession;
+
+    if (logUsesSession && m_gameController) {
+        if (m_debugDialog) {
+            m_debugDialog->close();
+        }
+        m_gameController->closeCommunicationLog();
+        updateDebugLogPath();
+    }
+
+    const HistorySessionDeletionResult result =
+        deleteHistorySession(sessionsDirectory, sessionDirectory);
+    if (!result.succeeded()) {
+        QMessageBox::warning(
+            this,
+            tr("Delete history"),
+            tr("The selected session could not be deleted:\n\n%1")
+                .arg(result.error));
+        refreshHistory();
+        return;
+    }
+
+    if (displayedSession) {
+        clearSessionPanels();
+    }
+    refreshHistory();
+    if (ui->statusbar) {
+        ui->statusbar->showMessage(
+            tournament ? tr("Tournament deleted.")
+                       : tr("Game deleted."),
+            4000);
     }
 }
 

@@ -61,4 +61,19 @@ struct HistoryLoadResult {
     QStringList warnings;
 };
 
+struct HistorySessionDeletionResult {
+    bool deleted = false;
+    QString error;
+
+    bool succeeded() const
+    {
+        return deleted && error.isEmpty();
+    }
+};
+
 HistoryLoadResult loadSessionHistory(const QString& sessionsDirectory);
+bool isManagedHistorySessionDirectory(const QString& sessionsDirectory,
+                                      const QString& sessionDirectory);
+HistorySessionDeletionResult deleteHistorySession(
+    const QString& sessionsDirectory,
+    const QString& sessionDirectory);
