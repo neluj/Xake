@@ -85,7 +85,8 @@ private:
     void finalizeMatchRecord(const QString& status,
                              const GameResult* result = nullptr,
                              const QString& abortTitle = QString(),
-                             const QString& abortMessage = QString());
+                             const QString& abortMessage = QString(),
+                             GameTermination termination = GameTermination::Unknown);
 
     Ui::MainWindow *ui;
     UciClient *m_uciClient;

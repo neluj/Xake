@@ -29,6 +29,7 @@ struct SessionRecord {
     qint64 blackTimeMs = -1;
     bool hasResult = false;
     GameResult result;
+    GameTermination termination = GameTermination::Unknown;
     QString abortTitle;
     QString abortMessage;
 };

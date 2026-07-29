@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game_result.h"
 #include "match_settings_types.h"
 #include "move_record.h"
 #include "position.h"
@@ -57,30 +58,6 @@ struct EngineSession {
     QString lastErrorLine;
 };
 
-enum class GameOutcome {
-    WhiteWin,
-    BlackWin,
-    Draw
-};
-
-enum class GameTermination {
-    Checkmate,
-    Stalemate,
-    FiftyMoveRule,
-    ThreefoldRepetition,
-    InsufficientMaterial,
-    TimeForfeit,
-    MoveLimit
-};
-
-struct GameResult {
-    GameOutcome outcome = GameOutcome::Draw;
-    GameTermination termination = GameTermination::Stalemate;
-    QString message;
-};
-
-Q_DECLARE_METATYPE(GameResult)
-
 class GameController : public QObject
 {
     Q_OBJECT
@@ -125,7 +102,9 @@ signals:
     void matchStopped();
     void pauseChanged(bool paused);
     void gameFinished(const GameResult& result);
-    void gameAborted(const QString& title, const QString& message);
+    void gameAborted(GameTermination termination,
+                     const QString& title,
+                     const QString& message);
     void errorOccurred(const QString& title, const QString& message);
     void engineFailureOccurred(EngineFailure failure,
                                EngineSide side,

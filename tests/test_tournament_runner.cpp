@@ -351,6 +351,8 @@ void TestTournamentRunner::pausesResumesAndStopsTournament()
     QCOMPARE(records.size(), 1);
     QVERIFY(records.constLast().aborted);
     QCOMPARE(records.constLast().moves, QStringList({QStringLiteral("e2e4")}));
+    QCOMPARE(records.constLast().termination,
+             GameTermination::Stopped);
     QCOMPARE(records.constLast().abortTitle,
              QStringLiteral("Tournament stopped"));
 }

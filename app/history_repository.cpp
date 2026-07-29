@@ -129,11 +129,17 @@ HistoryEntry parseMatch(const QJsonObject& root,
     entry.result = result.value(QStringLiteral("notation")).toString();
     entry.termination = result.value(QStringLiteral("termination")).toString();
     entry.message = result.value(QStringLiteral("message")).toString();
+    const QJsonObject abort =
+        root.value(QStringLiteral("abort")).toObject();
+    if (entry.termination.isEmpty()) {
+        entry.termination =
+            root.value(QStringLiteral("termination")).toString();
+    }
+    if (entry.termination.isEmpty()) {
+        entry.termination = abort.value(QStringLiteral("title")).toString();
+    }
     if (entry.message.isEmpty()) {
-        entry.message = root.value(QStringLiteral("abort"))
-                            .toObject()
-                            .value(QStringLiteral("message"))
-                            .toString();
+        entry.message = abort.value(QStringLiteral("message")).toString();
     }
 
     const QString pgnPath =
@@ -156,6 +162,10 @@ HistoryGame parseTournamentGame(const QJsonObject& object)
     game.result = object.value(QStringLiteral("result")).toString();
     game.termination = object.value(QStringLiteral("termination")).toString();
     game.message = object.value(QStringLiteral("message")).toString();
+    if (game.termination.isEmpty()) {
+        game.termination =
+            object.value(QStringLiteral("abortTitle")).toString();
+    }
     if (game.message.isEmpty()) {
         game.message = object.value(QStringLiteral("abortMessage")).toString();
     }

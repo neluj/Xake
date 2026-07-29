@@ -424,19 +424,21 @@ void renderHistoryDetails(QPlainTextEdit *editor,
         cursor.insertText(
             QObject::tr("TOURNAMENT GAME %1").arg(game->gameNumber),
             titleFormat);
+        const QString result = game->result.isEmpty()
+            ? readableHistoryValue(game->status)
+            : game->result;
         cursor.insertText(QStringLiteral("\n%1 - %2 : %3")
                               .arg(game->white,
                                    game->black,
-                                   game->result.isEmpty()
-                                       ? readableHistoryValue(game->status)
-                                       : game->result));
+                                   gameResultSummary(result,
+                                                     game->termination)));
         section(QObject::tr("Information"));
         field(QObject::tr("Date"), historyDate(game->startedAt));
         field(QObject::tr("Status"), readableHistoryValue(game->status));
         field(QObject::tr("Time"), historyTimeControl(entry));
         field(QObject::tr("Opening"), game->openingName);
         field(QObject::tr("Termination"),
-              readableHistoryValue(game->termination));
+              gameTerminationDisplayName(game->termination));
         field(QObject::tr("Message"), game->message);
         if (!game->moves.isEmpty()) {
             section(QObject::tr("Moves"));
@@ -465,24 +467,28 @@ void renderHistoryDetails(QPlainTextEdit *editor,
         if (!entry.games.isEmpty()) {
             section(QObject::tr("Games"));
             for (const HistoryGame& item : entry.games) {
+                const QString result = item.result.isEmpty()
+                    ? readableHistoryValue(item.status)
+                    : item.result;
                 cursor.insertText(
                     QStringLiteral("%1. %2 - %3 : %4\n")
                         .arg(item.gameNumber)
                         .arg(item.white)
                         .arg(item.black)
-                        .arg(item.result.isEmpty()
-                                 ? readableHistoryValue(item.status)
-                                 : item.result));
+                        .arg(gameResultSummary(result,
+                                               item.termination)));
             }
         }
     } else {
+        const QString result = entry.result.isEmpty()
+            ? readableHistoryValue(entry.status)
+            : entry.result;
         cursor.insertText(QObject::tr("GAME"), titleFormat);
         cursor.insertText(QStringLiteral("\n%1 - %2 : %3")
                               .arg(entry.player1,
                                    entry.player2,
-                                   entry.result.isEmpty()
-                                       ? readableHistoryValue(entry.status)
-                                       : entry.result));
+                                   gameResultSummary(result,
+                                                     entry.termination)));
         section(QObject::tr("Information"));
         field(QObject::tr("Date"), historyDate(entry.startedAt));
         field(QObject::tr("Status"), readableHistoryValue(entry.status));
@@ -494,7 +500,7 @@ void renderHistoryDetails(QPlainTextEdit *editor,
                 openingFormat);
         }
         field(QObject::tr("Termination"),
-              readableHistoryValue(entry.termination));
+              gameTerminationDisplayName(entry.termination));
         field(QObject::tr("Message"), entry.message);
         if (!entry.moves.isEmpty()) {
             section(QObject::tr("Moves"));
@@ -540,20 +546,6 @@ QString playerDisplayName(const PlayerConfig& player, const QString& fallback)
 
     const QString engineName = QFileInfo(player.enginePath).completeBaseName();
     return engineName.isEmpty() ? fallback : engineName;
-}
-
-QString gameResultNotation(GameOutcome outcome)
-{
-    switch (outcome) {
-    case GameOutcome::WhiteWin:
-        return QStringLiteral("1-0");
-    case GameOutcome::BlackWin:
-        return QStringLiteral("0-1");
-    case GameOutcome::Draw:
-        return QStringLiteral("1/2-1/2");
-    }
-
-    return QString();
 }
 
 struct PlayerStanding {
@@ -713,9 +705,20 @@ void renderTournamentHistory(QPlainTextEdit *editor,
     for (const TournamentGameRecord& game : games) {
         QString status = QObject::tr("IN PROGRESS");
         if (game.completed) {
-            status = gameResultNotation(game.result.outcome);
+            const QString termination =
+                game.result.termination == GameTermination::Unknown
+                ? QString()
+                : gameTerminationKey(game.result.termination);
+            status = gameResultSummary(
+                gameResultNotation(game.result.outcome),
+                termination);
         } else if (game.aborted) {
-            status = QObject::tr("ABORTED");
+            const QString termination =
+                game.termination == GameTermination::Unknown
+                ? QString()
+                : gameTerminationKey(game.termination);
+            status = gameResultSummary(QObject::tr("ABORTED"),
+                                       termination);
         }
 
         const QString whiteName =
@@ -773,40 +776,6 @@ bool ensureSessionDir(const QString& dir, QString* errorOut)
         *errorOut = QStringLiteral("Failed to create directory: %1").arg(dir);
     }
     return false;
-}
-
-QString pgnResult(GameOutcome outcome)
-{
-    switch (outcome) {
-    case GameOutcome::WhiteWin:
-        return QStringLiteral("1-0");
-    case GameOutcome::BlackWin:
-        return QStringLiteral("0-1");
-    case GameOutcome::Draw:
-        return QStringLiteral("1/2-1/2");
-    }
-    return QStringLiteral("*");
-}
-
-QString pgnTermination(GameTermination termination)
-{
-    switch (termination) {
-    case GameTermination::Checkmate:
-        return QStringLiteral("checkmate");
-    case GameTermination::Stalemate:
-        return QStringLiteral("stalemate");
-    case GameTermination::FiftyMoveRule:
-        return QStringLiteral("fifty-move rule");
-    case GameTermination::ThreefoldRepetition:
-        return QStringLiteral("threefold repetition");
-    case GameTermination::InsufficientMaterial:
-        return QStringLiteral("insufficient material");
-    case GameTermination::TimeForfeit:
-        return QStringLiteral("time forfeit");
-    case GameTermination::MoveLimit:
-        return QStringLiteral("move limit");
-    }
-    return QString();
 }
 
 QString pgnDate(const QString& isoTimestamp)
@@ -1096,7 +1065,8 @@ MainWindow::MainWindow(QWidget *parent)
             finalizeMatchRecord(QStringLiteral("stopped"),
                                 nullptr,
                                 tr("Game stopped"),
-                                tr("The game was stopped before completion."));
+                                tr("The game was stopped before completion."),
+                                GameTermination::Stopped);
         }
         if (m_clockUiTimer) {
             m_clockUiTimer->stop();
@@ -1137,11 +1107,14 @@ MainWindow::MainWindow(QWidget *parent)
         finalizeMatchRecord(QStringLiteral("completed"), &result);
     });
     connect(m_gameController, &GameController::gameAborted, this,
-            [this](const QString& title, const QString& message) {
+            [this](GameTermination termination,
+                   const QString& title,
+                   const QString& message) {
         finalizeMatchRecord(QStringLiteral("aborted"),
                             nullptr,
                             title,
-                            message);
+                            message,
+                            termination);
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentStarted, this,
@@ -1422,7 +1395,8 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         finalizeMatchRecord(QStringLiteral("aborted"),
                             nullptr,
                             tr("Game start failed"),
-                            tr("The game could not be started."));
+                            tr("The game could not be started."),
+                            GameTermination::StartFailure);
     }
     return started;
 }
@@ -1430,7 +1404,8 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
 void MainWindow::finalizeMatchRecord(const QString& status,
                                      const GameResult* result,
                                      const QString& abortTitle,
-                                     const QString& abortMessage)
+                                     const QString& abortMessage,
+                                     GameTermination termination)
 {
     if (!m_hasActiveMatchRecord || m_matchRecordPath.isEmpty()) {
         return;
@@ -1449,6 +1424,9 @@ void MainWindow::finalizeMatchRecord(const QString& status,
     m_matchRecord.hasResult = result != nullptr;
     if (result) {
         m_matchRecord.result = *result;
+        m_matchRecord.termination = result->termination;
+    } else {
+        m_matchRecord.termination = termination;
     }
     m_matchRecord.abortTitle = abortTitle;
     m_matchRecord.abortMessage = abortMessage;
@@ -1463,9 +1441,9 @@ void MainWindow::finalizeMatchRecord(const QString& status,
     pgn.date = pgnDate(m_matchRecord.startTimeIso);
     pgn.white = pgnPlayerName(m_matchRecord.match.player1);
     pgn.black = pgnPlayerName(m_matchRecord.match.player2);
-    pgn.result = result ? pgnResult(result->outcome) : QStringLiteral("*");
-    pgn.termination = result ? pgnTermination(result->termination)
-                             : status;
+    pgn.result = result ? gameResultNotation(result->outcome)
+                        : QStringLiteral("*");
+    pgn.termination = gameTerminationPgn(m_matchRecord.termination);
     pgn.startFen = m_matchRecord.startFen;
     pgn.opening = m_matchRecord.openingName;
     pgn.timeControl = pgnTimeControl(m_matchRecord.match.game);
@@ -1895,9 +1873,11 @@ void MainWindow::populateHistoryTree()
                   .arg(entry.player1Wins)
                   .arg(entry.player2Wins)
                   .arg(entry.draws)
-            : entry.result.isEmpty()
-                ? readableHistoryValue(entry.status)
-                : entry.result;
+            : gameResultSummary(
+                  entry.result.isEmpty()
+                      ? readableHistoryValue(entry.status)
+                      : entry.result,
+                  entry.termination);
         auto *top = new QTreeWidgetItem(ui->historyTree);
         top->setText(0, historyDate(entry.startedAt));
         top->setText(1, type);
@@ -1929,9 +1909,13 @@ void MainWindow::populateHistoryTree()
             child->setText(1, tr("Game %1").arg(game.gameNumber));
             child->setText(2, QStringLiteral("%1 - %2")
                                   .arg(game.white, game.black));
-            child->setText(3, game.result.isEmpty()
-                                  ? readableHistoryValue(game.status)
-                                  : game.result);
+            child->setText(
+                3,
+                gameResultSummary(
+                    game.result.isEmpty()
+                        ? readableHistoryValue(game.status)
+                        : game.result,
+                    game.termination));
             child->setData(0, kHistoryEntryRole, entryIndex);
             child->setData(0, kHistoryGameRole, gameIndex);
         }
@@ -2168,8 +2152,10 @@ bool MainWindow::beginReplay(const QVector<ReplayGame>& games,
             } else if (!game.title.isEmpty()) {
                 label += QStringLiteral(" | %1").arg(game.title);
             }
-            if (!game.result.isEmpty()) {
-                label += QStringLiteral(" | %1").arg(game.result);
+            const QString summary =
+                gameResultSummary(game.result, game.termination);
+            if (!summary.isEmpty()) {
+                label += QStringLiteral(" | %1").arg(summary);
             }
             ui->replayGameCombo->addItem(label);
         }
@@ -2212,11 +2198,13 @@ bool MainWindow::loadReplayGame(int index)
         game.black.isEmpty() ? tr("Black") : game.black;
     ui->labelWhitePlayer->setText(white);
     ui->labelBlackPlayer->setText(black);
+    const QString summary =
+        gameResultSummary(game.result, game.termination);
     ui->labelReplayTitle->setText(
-        game.result.isEmpty()
+        summary.isEmpty()
             ? tr("Replay | %1 - %2").arg(white, black)
             : tr("Replay | %1 - %2 | %3")
-                  .arg(white, black, game.result));
+                  .arg(white, black, summary));
     m_currentOpeningName = game.openingName;
     m_currentOpeningIndex = game.gameNumber;
     m_currentOpeningCount = 1;

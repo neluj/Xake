@@ -35,6 +35,7 @@ struct TournamentGameRecord {
     bool completed = false;
     bool aborted = false;
     GameResult result;
+    GameTermination termination = GameTermination::Unknown;
     QString abortTitle;
     QString abortMessage;
     int openingIndex = 0;
@@ -78,7 +79,9 @@ private:
     void startNextGame();
     void handleMovePlayed(int ply, const QString& uciMove);
     void handleGameFinished(const GameResult& result);
-    void handleGameAborted(const QString& title, const QString& message);
+    void handleGameAborted(GameTermination termination,
+                           const QString& title,
+                           const QString& message);
     MatchConfig matchForCurrentGame() const;
     const OpeningEntry& openingForCurrentGame() const;
     bool colorsAreSwappedForCurrentGame() const;

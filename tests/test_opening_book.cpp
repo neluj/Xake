@@ -23,7 +23,8 @@ void TestOpeningBook::parsesPgnMainlines()
         "[ECO \"C60\"]\n"
         "[White \"Engine A\"]\n"
         "[Black \"Engine B\"]\n"
-        "[Result \"1/2-1/2\"]\n\n"
+        "[Result \"1/2-1/2\"]\n"
+        "[Termination \"threefold repetition\"]\n\n"
         "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. O-O Nf6 1/2-1/2\n\n"
         "[Event \"Queen side\"]\n\n"
         "1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Bg5 Be7 5. e3 O-O 6. Qd2 Nbd7 *\n");
@@ -40,6 +41,8 @@ void TestOpeningBook::parsesPgnMainlines()
     QCOMPARE(openings.at(0).white, QStringLiteral("Engine A"));
     QCOMPARE(openings.at(0).black, QStringLiteral("Engine B"));
     QCOMPARE(openings.at(0).result, QStringLiteral("1/2-1/2"));
+    QCOMPARE(openings.at(0).termination,
+             QStringLiteral("threefold repetition"));
     QCOMPARE(openings.at(1).movesUci.constLast(), QStringLiteral("b8d7"));
 }
 

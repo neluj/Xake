@@ -160,6 +160,18 @@ ReplayGame sessionGame(const QJsonObject& root, const QString& filePath)
     const QJsonObject result =
         root.value(QStringLiteral("result")).toObject();
     game.result = result.value(QStringLiteral("notation")).toString();
+    game.termination =
+        result.value(QStringLiteral("termination")).toString();
+    if (game.termination.isEmpty()) {
+        game.termination =
+            root.value(QStringLiteral("termination")).toString();
+    }
+    if (game.termination.isEmpty()) {
+        game.termination = root.value(QStringLiteral("abort"))
+                               .toObject()
+                               .value(QStringLiteral("title"))
+                               .toString();
+    }
 
     const QJsonObject opening =
         root.value(QStringLiteral("opening")).toObject();
@@ -201,6 +213,12 @@ ReplayGame tournamentGame(const QJsonObject& object,
     game.white = playerName(object.value(QStringLiteral("white")));
     game.black = playerName(object.value(QStringLiteral("black")));
     game.result = object.value(QStringLiteral("result")).toString();
+    game.termination =
+        object.value(QStringLiteral("termination")).toString();
+    if (game.termination.isEmpty()) {
+        game.termination =
+            object.value(QStringLiteral("abortTitle")).toString();
+    }
 
     const QJsonObject opening =
         object.value(QStringLiteral("opening")).toObject();
@@ -316,6 +334,7 @@ ReplayLoadResult loadOpeningReplay(const QString& filePath)
         game.white = entry.white;
         game.black = entry.black;
         game.result = entry.result;
+        game.termination = entry.termination;
         game.openingName = entry.name;
         game.startFen = normalizedStartFen(entry.startFen);
         game.openingMoveCount = entry.openingMoveCount;

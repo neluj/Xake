@@ -16,6 +16,7 @@ struct OpeningEntry {
     QString result;
     QString round;
     int openingMoveCount = 0;
+    QString termination;
 };
 
 bool loadOpeningFile(const QString& filePath,

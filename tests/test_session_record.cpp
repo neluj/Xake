@@ -83,6 +83,8 @@ void TestSessionRecord::writesCompletedMatchState()
              QStringLiteral("white_win"));
     QCOMPARE(result.value(QStringLiteral("termination")).toString(),
              QStringLiteral("checkmate"));
+    QCOMPARE(root.value(QStringLiteral("termination")).toString(),
+             QStringLiteral("checkmate"));
 }
 
 QTEST_APPLESS_MAIN(TestSessionRecord)

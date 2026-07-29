@@ -513,7 +513,8 @@ void TestMoveExecution::controllerDrawsOnTimeoutWithoutMatingMaterial()
 
     const GameResult result = finishedSpy.takeFirst().at(0).value<GameResult>();
     QCOMPARE(result.outcome, GameOutcome::Draw);
-    QCOMPARE(result.termination, GameTermination::TimeForfeit);
+    QCOMPARE(result.termination,
+             GameTermination::TimeExpiredInsufficientMaterial);
 
     const QList<QVariant> message = errorSpy.takeFirst();
     QCOMPARE(message[0].toString(), QStringLiteral("Draw"));

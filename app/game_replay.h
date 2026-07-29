@@ -16,6 +16,7 @@ struct ReplayGame {
     QString white;
     QString black;
     QString result;
+    QString termination;
     QString openingName;
     QString startFen;
     int openingMoveCount = 0;

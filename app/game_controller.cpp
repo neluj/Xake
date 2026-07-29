@@ -995,7 +995,9 @@ void GameController::reportEngineFailure(EngineSide side,
     emit engineFailureOccurred(failure, side, message);
 
     if (abortGame && m_active) {
-        emit gameAborted(tr("Engine error"), message);
+        emit gameAborted(GameTermination::EngineFailure,
+                         tr("Engine error"),
+                         message);
         stopMatch();
     }
     emit errorOccurred(tr("Engine error"), message);
@@ -1173,7 +1175,7 @@ bool GameController::finishGameOnTime(Color flaggedSide)
     const Color winner = ~flaggedSide;
     if (!m_position.has_mating_material(winner)) {
         return finishGameAsDraw(
-            GameTermination::TimeForfeit,
+            GameTermination::TimeExpiredInsufficientMaterial,
             tr("Draw on time: %1 has no mating material.")
                 .arg(winner == WHITE ? tr("White") : tr("Black")));
     }
@@ -1250,7 +1252,9 @@ bool GameController::finishGameIfNoLegalMoves()
     const Bitboard kingBitboard = m_position.get_pieceTypes_bitboard(sideToMove, KING);
     if (!kingBitboard) {
         const QString message = tr("Position has no king for the side to move.");
-        emit gameAborted(tr("Invalid position"), message);
+        emit gameAborted(GameTermination::InvalidPosition,
+                         tr("Invalid position"),
+                         message);
         stopMatch();
         emit errorOccurred(tr("Invalid position"), message);
         return true;

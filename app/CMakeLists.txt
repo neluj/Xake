@@ -12,6 +12,7 @@ set(APP_SOURCES
     app_state.h
     app_settings.cpp
     app_settings.h
+    game_result.h
     game_controller.cpp
     game_controller.h
     history_repository.cpp

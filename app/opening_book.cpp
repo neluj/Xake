@@ -416,6 +416,7 @@ bool appendPgnGame(const RawPgnGame& raw,
     entry.white = raw.tags.value(QStringLiteral("WHITE")).trimmed();
     entry.black = raw.tags.value(QStringLiteral("BLACK")).trimmed();
     entry.result = raw.tags.value(QStringLiteral("RESULT")).trimmed();
+    entry.termination = raw.tags.value(QStringLiteral("TERMINATION")).trimmed();
     entry.round = raw.tags.value(QStringLiteral("ROUND")).trimmed();
     bool openingCountValid = false;
     const int openingCount =

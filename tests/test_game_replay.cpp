@@ -102,7 +102,10 @@ void TestGameReplay::loadsLegacySessionJson()
         },
         "moves": ["e2e4", "e7e5", "g1f3"],
         "clocks": {"whiteMs": 58000, "blackMs": 59000},
-        "result": {"notation": "1-0"}
+        "result": {
+            "notation": "1-0",
+            "termination": "checkmate"
+        }
     })json")));
 
     const ReplayLoadResult loaded = loadReplayFile(path);
@@ -111,6 +114,7 @@ void TestGameReplay::loadsLegacySessionJson()
     const ReplayGame& game = loaded.games.first();
     QCOMPARE(game.white, QStringLiteral("Alice"));
     QCOMPARE(game.black, QStringLiteral("Engine"));
+    QCOMPARE(game.termination, QStringLiteral("checkmate"));
     QCOMPARE(game.openingMoveCount, 2);
     QCOMPARE(game.moveRecords.at(0).origin, MoveOrigin::Opening);
     QCOMPARE(game.moveRecords.at(2).origin, MoveOrigin::Imported);
@@ -142,7 +146,8 @@ void TestGameReplay::loadsTournamentReport()
                     "moves": ["e2e4", "e7e5"]
                 },
                 "moves": ["e2e4", "e7e5"],
-                "result": "1/2-1/2"
+                "result": "1/2-1/2",
+                "termination": "fifty_move_rule"
             },
             {
                 "gameNumber": 2,
@@ -163,6 +168,8 @@ void TestGameReplay::loadsTournamentReport()
     QVERIFY2(loaded.success(), qPrintable(loaded.error));
     QCOMPARE(loaded.games.size(), 2);
     QCOMPARE(loaded.games.at(0).gameNumber, 1);
+    QCOMPARE(loaded.games.at(0).termination,
+             QStringLiteral("fifty_move_rule"));
     QCOMPARE(loaded.games.at(1).white, QStringLiteral("Engine B"));
     QCOMPARE(loaded.games.at(1).openingName,
              QStringLiteral("Queen Pawn"));
@@ -179,6 +186,7 @@ void TestGameReplay::loadsMultiplePgnGames()
         "[White \"Alpha\"]\n"
         "[Black \"Beta\"]\n"
         "[Result \"1-0\"]\n"
+        "[Termination \"checkmate\"]\n"
         "[Opening \"Italian Game\"]\n"
         "[XakeOpeningPlyCount \"2\"]\n\n"
         "1. e4 e5 2. Nf3 1-0\n\n"
@@ -195,6 +203,7 @@ void TestGameReplay::loadsMultiplePgnGames()
     QCOMPARE(loaded.games.at(0).white, QStringLiteral("Alpha"));
     QCOMPARE(loaded.games.at(0).black, QStringLiteral("Beta"));
     QCOMPARE(loaded.games.at(0).result, QStringLiteral("1-0"));
+    QCOMPARE(loaded.games.at(0).termination, QStringLiteral("checkmate"));
     QCOMPARE(loaded.games.at(0).openingMoveCount, 2);
     QCOMPARE(loaded.games.at(1).movesUci,
              QStringList({QStringLiteral("d2d4")}));

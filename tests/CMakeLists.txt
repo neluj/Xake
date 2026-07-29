@@ -85,6 +85,15 @@ target_link_libraries(history_repository_tests PRIVATE Qt6::Test)
 
 add_test(NAME history_repository_tests COMMAND history_repository_tests)
 
+add_executable(game_result_tests
+    test_game_result.cpp
+)
+
+target_include_directories(game_result_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(game_result_tests PRIVATE Qt6::Test)
+
+add_test(NAME game_result_tests COMMAND game_result_tests)
+
 add_executable(session_record_tests
     test_session_record.cpp
     ${CMAKE_SOURCE_DIR}/app/move_record.cpp

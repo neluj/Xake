@@ -128,6 +128,8 @@ void TestHistoryRepository::loadsMatchesAndTournamentsNewestFirst()
     QCOMPARE(tournament.games.first().openingName,
              QStringLiteral("Italian Game"));
     QCOMPARE(tournament.games.first().openingMoveCount, 2);
+    QCOMPARE(tournament.games.first().termination,
+             QStringLiteral("checkmate"));
     QVERIFY(!tournament.pgnFilePath.isEmpty());
 
     const HistoryEntry& match = history.entries.at(1);
@@ -135,6 +137,7 @@ void TestHistoryRepository::loadsMatchesAndTournamentsNewestFirst()
     QCOMPARE(match.player1, QStringLiteral("Alice"));
     QCOMPARE(match.player2, QStringLiteral("Dragon"));
     QCOMPARE(match.result, QStringLiteral("1-0"));
+    QCOMPARE(match.termination, QStringLiteral("checkmate"));
     QCOMPARE(match.openingName, QStringLiteral("Sicilian"));
     QCOMPARE(match.openingMoveCount, 2);
     QCOMPARE(match.moves.size(), 3);
@@ -159,6 +162,7 @@ void TestHistoryRepository::skipsCorruptRecordsWithoutLosingValidHistory()
             "sessionType": "match",
             "sessionTag": "ok",
             "status": "stopped",
+            "termination": "stopped",
             "startTime": "2026-07-26T09:00:00Z",
             "match": {
                 "player1": {"name": "White"},
@@ -170,6 +174,8 @@ void TestHistoryRepository::skipsCorruptRecordsWithoutLosingValidHistory()
     const HistoryLoadResult history = loadSessionHistory(root.path());
     QCOMPARE(history.entries.size(), 1);
     QCOMPARE(history.entries.first().sessionTag, QStringLiteral("ok"));
+    QCOMPARE(history.entries.first().termination,
+             QStringLiteral("stopped"));
     QCOMPARE(history.warnings.size(), 1);
     QVERIFY(history.warnings.first().contains(QStringLiteral("session_bad.json")));
 }
