@@ -69,6 +69,8 @@ const char kWhiteEngineCommunicationColor[] = "#247C8F";
 const char kBlackEngineCommunicationColor[] = "#B85C2B";
 constexpr int kHistoryEntryRole = Qt::UserRole;
 constexpr int kHistoryGameRole = Qt::UserRole + 1;
+const char kHistoryHeaderStateKey[] = "ui/historyHeaderState";
+constexpr int kHistoryMinimumColumnWidth = 70;
 
 Qt::CaseSensitivity pathCaseSensitivity()
 {
@@ -101,6 +103,50 @@ bool pathBelongsToDirectory(const QString& path, const QString& directory)
     const QString prefix = directoryPath + QLatin1Char('/');
     return QString::compare(candidatePath, directoryPath, pathCaseSensitivity()) == 0
         || candidatePath.startsWith(prefix, pathCaseSensitivity());
+}
+
+void configureHistoryColumns(QTreeWidget *tree, const QSettings& settings)
+{
+    if (!tree || !tree->header()) {
+        return;
+    }
+
+    QHeaderView *header = tree->header();
+    const QByteArray savedState =
+        settings.value(QString::fromLatin1(kHistoryHeaderStateKey)).toByteArray();
+    const bool restored =
+        !savedState.isEmpty() && header->restoreState(savedState);
+
+    header->setSectionsMovable(false);
+    header->setMinimumSectionSize(kHistoryMinimumColumnWidth);
+    for (int column = 0; column < tree->columnCount(); ++column) {
+        header->setSectionResizeMode(column, QHeaderView::Interactive);
+    }
+    header->setStretchLastSection(true);
+    tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    if (!restored) {
+        tree->setColumnWidth(0, 150);
+        tree->setColumnWidth(1, 95);
+        tree->setColumnWidth(2, 260);
+        tree->setColumnWidth(3, 180);
+    }
+
+    auto *saveTimer = new QTimer(tree);
+    saveTimer->setSingleShot(true);
+    saveTimer->setInterval(250);
+    QObject::connect(header,
+                     &QHeaderView::sectionResized,
+                     saveTimer,
+                     [saveTimer](int, int, int) {
+        saveTimer->start();
+    });
+    QObject::connect(saveTimer, &QTimer::timeout, header, [header]() {
+        QSettings currentSettings;
+        currentSettings.setValue(
+            QString::fromLatin1(kHistoryHeaderStateKey),
+            header->saveState());
+    });
 }
 
 QPixmap colorIndicatorPixmap(Color color, int size)
@@ -873,13 +919,7 @@ MainWindow::MainWindow(QWidget *parent)
     configureMoveLegend(ui->labelHistoryMoveLegend);
     configureEngineOutput(ui->whiteEngineOutputText);
     configureEngineOutput(ui->blackEngineOutputText);
-    ui->historyTree->header()->setSectionResizeMode(
-        0, QHeaderView::ResizeToContents);
-    ui->historyTree->header()->setSectionResizeMode(
-        1, QHeaderView::ResizeToContents);
-    ui->historyTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);
-    ui->historyTree->header()->setSectionResizeMode(
-        3, QHeaderView::ResizeToContents);
+    configureHistoryColumns(ui->historyTree, settings);
     ui->historySplitter->setStretchFactor(0, 3);
     ui->historySplitter->setStretchFactor(1, 4);
     setTournamentTabActive(false);
