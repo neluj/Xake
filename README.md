@@ -4,7 +4,7 @@
   <p>
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/neluj/Xake"></a>
     <a href="https://github.com/neluj/Xake/releases"><img alt="Version" src="https://img.shields.io/github/v/release/neluj/Xake?sort=semver"></a>
-    <a href="https://github.com/neluj/Xake/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/neluj/Xake/actions/workflows/ci.yml/badge.svg?branch=develop"></a>
+    <a href="https://github.com/neluj/Xake/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/neluj/Xake/actions/workflows/ci.yml/badge.svg?branch=main"></a>
     <br>
     <a href="https://en.cppreference.com/w/cpp/20"><img alt="C++20" src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B&logoColor=white"></a>
     <a href="https://www.qt.io/product/framework"><img alt="Qt 6.7+" src="https://img.shields.io/badge/Qt-6.7%2B-41CD52?logo=qt&logoColor=white"></a>
