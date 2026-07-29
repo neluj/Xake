@@ -4,6 +4,7 @@
 #include "application_data.h"
 #include "application_data_dialog.h"
 #include "app_settings.h"
+#include "captured_pieces_widget.h"
 #include "single_game_dialog.h"
 #include "history_repository.h"
 #include "opening_book.h"
@@ -982,6 +983,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_gameController, &GameController::movePlayed, this,
             [this](int, const QString&) {
         updateGameMoveList();
+        updateCapturedPieces();
         if (m_tournamentRunner && m_tournamentRunner->isActive()) {
             updateTournamentHistory();
         }
@@ -1038,6 +1040,7 @@ MainWindow::MainWindow(QWidget *parent)
         updateEngineOutputPanels(match);
         updateSideToMoveLabel(m_gameController->currentPosition());
         updateGameMoveList();
+        updateCapturedPieces();
         updateClockUi();
         if (m_clockUiTimer) {
             m_clockUiTimer->start();
@@ -1221,6 +1224,7 @@ MainWindow::MainWindow(QWidget *parent)
         ui->labelBlackPlayer->clear();
     }
     updateGameMoveList();
+    updateCapturedPieces();
     updateSessionControls();
     refreshHistory();
 }
@@ -1630,6 +1634,7 @@ void MainWindow::clearSessionPanels()
     ui->labelSideToMove->clear();
     ui->labelGameOpening->setText(tr("Opening: -"));
     ui->gameMovesText->clear();
+    ui->capturedPiecesWidget->setCapturedPieces({});
     ui->labelWhiteEngineOutput->setText(tr("White"));
     ui->labelBlackEngineOutput->setText(tr("Black"));
     ui->whiteEngineOutputText->clear();
@@ -1710,6 +1715,16 @@ void MainWindow::updateGameMoveList()
     renderGameMovesInColumns(ui->gameMovesText,
                              m_gameController->moveHistoryUci(),
                              m_gameController->initialMoveCount());
+}
+
+void MainWindow::updateCapturedPieces()
+{
+    if (!ui || !ui->capturedPiecesWidget || !m_gameController) {
+        return;
+    }
+
+    ui->capturedPiecesWidget->setCapturedPieces(
+        m_gameController->capturedPieces());
 }
 
 void MainWindow::refreshHistory()

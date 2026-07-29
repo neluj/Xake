@@ -165,6 +165,7 @@ bool GameController::startMatch(const MatchConfig& config,
     stopEngines();
     m_uciMoves.clear();
     m_moveHistory.clear();
+    m_capturedPieces.clear();
     m_initialMoveCount = 0;
     m_paused = false;
     if (m_flagTimer) {
@@ -352,6 +353,11 @@ QStringList GameController::moveHistoryUci() const
     return m_uciMoves;
 }
 
+QVector<Piece> GameController::capturedPieces() const
+{
+    return m_capturedPieces;
+}
+
 int GameController::initialMoveCount() const
 {
     return m_initialMoveCount;
@@ -388,6 +394,7 @@ bool GameController::clearFinishedSessionData()
     m_config = MatchConfig{};
     m_uciMoves.clear();
     m_moveHistory.clear();
+    m_capturedPieces.clear();
     m_initialMoveCount = 0;
     m_baseIsStartpos = true;
     m_baseFen = kStartFen;
@@ -608,10 +615,18 @@ bool GameController::applyMove(Move move, Move* appliedMove)
         return false;
     }
 
+    Piece captured = captured_piece(legalMove);
+    if (move_special(legalMove) == ENPASSANT) {
+        captured = make_piece(~m_position.get_side_to_move(), PAWN);
+    }
+
     if (!m_position.do_move(legalMove)) {
         return false;
     }
 
+    if (captured != NO_PIECE) {
+        m_capturedPieces.append(captured);
+    }
     if (appliedMove) {
         *appliedMove = legalMove;
     }

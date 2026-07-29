@@ -57,6 +57,7 @@ private:
     void updateTournamentStandings();
     void updateTournamentHistory();
     void updateGameMoveList();
+    void updateCapturedPieces();
     void updateGameOpeningLabel();
     void updatePlayerNames(const MatchConfig& match);
     void updateEngineOutputPanels(const MatchConfig& match);

@@ -30,6 +30,8 @@ add_test(NAME match_settings_widget_tests COMMAND match_settings_widget_tests)
 add_executable(board_widget_tests
     test_boardwidget.cpp
     ${CMAKE_SOURCE_DIR}/app/boardwidget.cpp
+    ${CMAKE_SOURCE_DIR}/app/captured_pieces_widget.cpp
+    ${CMAKE_SOURCE_DIR}/app/resources.qrc
 )
 
 target_include_directories(board_widget_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
