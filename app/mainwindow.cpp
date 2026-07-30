@@ -487,17 +487,22 @@ void renderHistoryDetails(QPlainTextEdit *editor,
     titleFormat.setFontPointSize(12);
     QTextCharFormat sectionFormat;
     sectionFormat.setFontWeight(QFont::Bold);
-    QTextCharFormat openingFormat = moveTextFormat(true);
+    QTextCharFormat fieldFormat;
+    fieldFormat.setFontWeight(QFont::Normal);
+    fieldFormat.setForeground(editor->palette().color(QPalette::Text));
 
     const auto section = [&cursor, &sectionFormat](const QString& title) {
         cursor.insertText(QStringLiteral("\n\n---------- %1 ----------\n")
                               .arg(title),
                           sectionFormat);
     };
-    const auto field = [&cursor](const QString& name, const QString& value) {
-        if (!value.isEmpty()) {
-            cursor.insertText(QStringLiteral("%1: %2\n").arg(name, value));
-        }
+    const auto field =
+        [&cursor, &fieldFormat](const QString& name, const QString& value) {
+            if (!value.isEmpty()) {
+                cursor.insertText(
+                    QStringLiteral("%1: %2\n").arg(name, value),
+                    fieldFormat);
+            }
     };
 
     if (game) {
@@ -573,12 +578,7 @@ void renderHistoryDetails(QPlainTextEdit *editor,
         field(QObject::tr("Date"), historyDate(entry.startedAt));
         field(QObject::tr("Status"), readableHistoryValue(entry.status));
         field(QObject::tr("Time"), historyTimeControl(entry));
-        if (!entry.openingName.isEmpty()) {
-            cursor.insertText(
-                QStringLiteral("%1: %2\n")
-                    .arg(QObject::tr("Opening"), entry.openingName),
-                openingFormat);
-        }
+        field(QObject::tr("Opening"), entry.openingName);
         field(QObject::tr("Termination"),
               gameTerminationDisplayName(entry.termination));
         field(QObject::tr("Message"), entry.message);
@@ -1134,6 +1134,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(m_gameController, &GameController::matchStarted, this, [this](const MatchConfig& match) {
+        clearGameResult();
         updatePlayerNames(match);
         updateGameOpeningLabel();
         updateEngineOutputPanels(match);
@@ -1148,6 +1149,12 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(m_gameController, &GameController::matchStopped, this, [this]() {
+        if (ui && ui->gameResultPanel
+            && ui->gameResultPanel->isHidden()) {
+            showGameResult(QStringLiteral("*"),
+                           gameTerminationKey(GameTermination::Stopped),
+                           tr("The game was stopped before completion."));
+        }
         if (m_hasActiveMatchRecord) {
             finalizeMatchRecord(QStringLiteral("stopped"),
                                 nullptr,
@@ -1191,12 +1198,18 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_gameController, &GameController::gameFinished, this,
             [this](const GameResult& result) {
+        showGameResult(gameResultNotation(result.outcome),
+                       gameTerminationKey(result.termination),
+                       result.message);
         finalizeMatchRecord(QStringLiteral("completed"), &result);
     });
     connect(m_gameController, &GameController::gameAborted, this,
             [this](GameTermination termination,
                    const QString& title,
                    const QString& message) {
+        showGameResult(QStringLiteral("*"),
+                       gameTerminationKey(termination),
+                       message);
         finalizeMatchRecord(QStringLiteral("aborted"),
                             nullptr,
                             title,
@@ -1477,6 +1490,9 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
         clearTournamentPanel();
         updateSessionControls();
     } else if (m_hasActiveMatchRecord) {
+        showGameResult(QStringLiteral("*"),
+                       gameTerminationKey(GameTermination::StartFailure),
+                       tr("The game could not be started."));
         finalizeMatchRecord(QStringLiteral("aborted"),
                             nullptr,
                             tr("Game start failed"),
@@ -1720,6 +1736,7 @@ void MainWindow::clearSessionPanels()
     m_replayGames.clear();
     ui->replayPanel->hide();
     ui->replayGameCombo->clear();
+    clearGameResult();
     m_gameController->clearFinishedSessionData();
     m_currentOpeningName.clear();
     m_currentOpeningIndex = 0;
@@ -1836,6 +1853,42 @@ void MainWindow::updateCapturedPieces()
     }
     ui->capturedPiecesWidget->setCapturedPieces(
         m_gameController->capturedPieces());
+}
+
+void MainWindow::clearGameResult()
+{
+    if (!ui || !ui->gameResultPanel) {
+        return;
+    }
+
+    ui->gameResultPanel->hide();
+    ui->labelGameResultSummary->clear();
+    ui->labelGameResultMessage->clear();
+    ui->labelGameResultMessage->hide();
+}
+
+void MainWindow::showGameResult(const QString& result,
+                                const QString& termination,
+                                const QString& message)
+{
+    if (!ui || !ui->gameResultPanel
+        || !ui->labelGameResultSummary
+        || !ui->labelGameResultMessage) {
+        return;
+    }
+
+    const QString summary = gameResultSummary(result, termination);
+    const QString detail = message.trimmed();
+    if (summary.isEmpty() && detail.isEmpty()) {
+        clearGameResult();
+        return;
+    }
+
+    ui->labelGameResultSummary->setText(
+        summary.isEmpty() ? tr("Game finished") : summary);
+    ui->labelGameResultMessage->setText(detail);
+    ui->labelGameResultMessage->setVisible(!detail.isEmpty());
+    ui->gameResultPanel->show();
 }
 
 void MainWindow::refreshHistory()
@@ -2437,13 +2490,9 @@ bool MainWindow::loadReplayGame(int index)
         game.black.isEmpty() ? tr("Black") : game.black;
     ui->labelWhitePlayer->setText(white);
     ui->labelBlackPlayer->setText(black);
-    const QString summary =
-        gameResultSummary(game.result, game.termination);
     ui->labelReplayTitle->setText(
-        summary.isEmpty()
-            ? tr("Replay | %1 - %2").arg(white, black)
-            : tr("Replay | %1 - %2 | %3")
-                  .arg(white, black, summary));
+        tr("Replay | %1 - %2").arg(white, black));
+    showGameResult(game.result, game.termination);
     m_currentOpeningName = game.openingName;
     m_currentOpeningIndex = game.gameNumber;
     m_currentOpeningCount = 1;

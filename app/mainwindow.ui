@@ -137,6 +137,67 @@
           </attribute>
           <layout class="QVBoxLayout" name="gameTabLayout">
            <item>
+            <widget class="QGroupBox" name="gameResultPanel">
+             <property name="visible">
+              <bool>false</bool>
+             </property>
+             <property name="title">
+              <string>Result</string>
+             </property>
+             <layout class="QVBoxLayout" name="gameResultLayout">
+              <property name="leftMargin">
+               <number>6</number>
+              </property>
+              <property name="topMargin">
+               <number>6</number>
+              </property>
+              <property name="rightMargin">
+               <number>6</number>
+              </property>
+              <property name="bottomMargin">
+               <number>6</number>
+              </property>
+              <property name="spacing">
+               <number>2</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="labelGameResultSummary">
+                <property name="font">
+                 <font>
+                  <bold>true</bold>
+                 </font>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
+                </property>
+                <property name="textInteractionFlags">
+                 <set>Qt::TextSelectableByMouse</set>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelGameResultMessage">
+                <property name="text">
+                 <string/>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="textInteractionFlags">
+                 <set>Qt::TextSelectableByMouse</set>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
             <widget class="QLabel" name="labelGameMovesDivider">
              <property name="font">
               <font>

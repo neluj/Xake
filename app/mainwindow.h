@@ -58,6 +58,10 @@ private:
     void updateTournamentHistory();
     void updateGameMoveList();
     void updateCapturedPieces();
+    void clearGameResult();
+    void showGameResult(const QString& result,
+                        const QString& termination,
+                        const QString& message = QString());
     void updateGameOpeningLabel();
     void updatePlayerNames(const MatchConfig& match);
     void updateEngineOutputPanels(const MatchConfig& match);
