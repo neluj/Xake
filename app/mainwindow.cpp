@@ -936,6 +936,16 @@ MainWindow::MainWindow(QWidget *parent)
         style()->standardIcon(QStyle::SP_MediaSkipForward));
     ui->replayCloseButton->setIcon(
         style()->standardIcon(QStyle::SP_DialogCloseButton));
+    ui->historyRefreshButton->setIcon(
+        style()->standardIcon(QStyle::SP_BrowserReload));
+    ui->historyReplayButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaPlay));
+    ui->historyLoadReplayButton->setIcon(
+        style()->standardIcon(QStyle::SP_DialogOpenButton));
+    ui->historyOpenPgnButton->setIcon(
+        style()->standardIcon(QStyle::SP_FileIcon));
+    ui->historyOpenFolderButton->setIcon(
+        style()->standardIcon(QStyle::SP_DirOpenIcon));
     ui->historyDeleteButton->setIcon(
         style()->standardIcon(QStyle::SP_TrashIcon));
 
@@ -2070,7 +2080,7 @@ void MainWindow::updateHistoryDeleteButton()
 
     QPushButton *button = ui->historyDeleteButton;
     button->setEnabled(false);
-    button->setText(tr("Delete session"));
+    button->setText(tr("Delete"));
     button->setToolTip(QString());
 
     QTreeWidgetItem *selected = ui->historyTree->currentItem();
@@ -2092,9 +2102,6 @@ void MainWindow::updateHistoryDeleteButton()
         return;
     }
 
-    button->setText(entry.type == HistorySessionType::Tournament
-                        ? tr("Delete tournament")
-                        : tr("Delete game"));
     const bool active =
         (m_tournamentRunner && m_tournamentRunner->isActive())
         || (m_gameController && m_gameController->isActive());

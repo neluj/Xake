@@ -769,7 +769,7 @@
                     <bool>false</bool>
                    </property>
                    <property name="text">
-                    <string>Delete session</string>
+                    <string>Delete</string>
                    </property>
                   </widget>
                  </item>
