@@ -37,11 +37,14 @@ void TestPgnExport::exportsSanMoveText()
         QStringLiteral("b8c6"),
         QStringLiteral("f1b5")
     };
+    game.openingMoveCount = 4;
 
     QString error;
     const QString pgn = pgnText({game}, &error);
     QVERIFY2(!pgn.isEmpty(), qPrintable(error));
     QVERIFY(pgn.contains(QStringLiteral("1. e4 e5 2. Nf3 Nc6 3. Bb5 *")));
+    QVERIFY(pgn.contains(
+        QStringLiteral("[XakeOpeningPlyCount \"4\"]")));
     QVERIFY(!pgn.contains(QStringLiteral("[SetUp")));
 }
 

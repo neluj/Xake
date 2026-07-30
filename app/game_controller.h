@@ -1,6 +1,8 @@
 #pragma once
 
+#include "game_result.h"
 #include "match_settings_types.h"
+#include "move_record.h"
 #include "position.h"
 
 #include <QFile>
@@ -56,30 +58,6 @@ struct EngineSession {
     QString lastErrorLine;
 };
 
-enum class GameOutcome {
-    WhiteWin,
-    BlackWin,
-    Draw
-};
-
-enum class GameTermination {
-    Checkmate,
-    Stalemate,
-    FiftyMoveRule,
-    ThreefoldRepetition,
-    InsufficientMaterial,
-    TimeForfeit,
-    MoveLimit
-};
-
-struct GameResult {
-    GameOutcome outcome = GameOutcome::Draw;
-    GameTermination termination = GameTermination::Stalemate;
-    QString message;
-};
-
-Q_DECLARE_METATYPE(GameResult)
-
 class GameController : public QObject
 {
     Q_OBJECT
@@ -107,6 +85,7 @@ public:
     MatchConfig matchConfig() const;
     Xake::Position currentPosition() const;
     QStringList moveHistoryUci() const;
+    QVector<MoveRecord> moveRecords() const;
     QVector<Xake::Piece> capturedPieces() const;
     int initialMoveCount() const;
     QStringList communicationHistory() const;
@@ -123,7 +102,9 @@ signals:
     void matchStopped();
     void pauseChanged(bool paused);
     void gameFinished(const GameResult& result);
-    void gameAborted(const QString& title, const QString& message);
+    void gameAborted(GameTermination termination,
+                     const QString& title,
+                     const QString& message);
     void errorOccurred(const QString& title, const QString& message);
     void engineFailureOccurred(EngineFailure failure,
                                EngineSide side,
@@ -141,8 +122,8 @@ private:
     Xake::Move moveFromUci(const QString& move) const;
     Xake::Move resolveMoveCandidate(Xake::Move move) const;
     QString uciFromMove(Xake::Move move) const;
-    bool applyMove(Xake::Move move, Xake::Move* appliedMove = nullptr);
-    void afterMoveApplied(Xake::Move move);
+    bool applyMove(Xake::Move move, MoveRecord* record = nullptr);
+    void afterMoveApplied(MoveRecord record, MoveOrigin origin);
     bool finishGameIfNoLegalMoves();
     bool finishGameIfDraw();
     bool finishGameIfMoveLimit();
@@ -201,8 +182,7 @@ private:
     bool m_baseIsStartpos = false;
     std::string m_baseFen;
     QStringList m_uciMoves;
-    QVector<Xake::Move> m_moveHistory;
-    QVector<Xake::Piece> m_capturedPieces;
+    QVector<MoveRecord> m_moveRecords;
     int m_initialMoveCount = 0;
     bool m_timeControlEnabled = false;
     qint64 m_whiteTimeMs = 0;

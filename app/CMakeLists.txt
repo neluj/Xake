@@ -7,9 +7,12 @@ set(APP_SOURCES
     boardwidget.h
     captured_pieces_widget.cpp
     captured_pieces_widget.h
+    game_replay.cpp
+    game_replay.h
     app_state.h
     app_settings.cpp
     app_settings.h
+    game_result.h
     game_controller.cpp
     game_controller.h
     history_repository.cpp
@@ -20,6 +23,8 @@ set(APP_SOURCES
     match_settings_types.h
     match_settings_validation.cpp
     match_settings_validation.h
+    move_record.cpp
+    move_record.h
     opening_book.cpp
     opening_book.h
     pgn_export.cpp

@@ -17,6 +17,7 @@ struct PgnGameRecord {
     QString opening;
     QString timeControl;
     QStringList movesUci;
+    int openingMoveCount = 0;
 };
 
 QString pgnText(const QVector<PgnGameRecord>& games, QString* errorOut = nullptr);

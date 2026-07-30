@@ -52,53 +52,6 @@ QJsonObject tournamentToJson(const TournamentConfig& tournament)
     return obj;
 }
 
-QString resultNotation(GameOutcome outcome)
-{
-    switch (outcome) {
-    case GameOutcome::WhiteWin:
-        return QStringLiteral("1-0");
-    case GameOutcome::BlackWin:
-        return QStringLiteral("0-1");
-    case GameOutcome::Draw:
-        return QStringLiteral("1/2-1/2");
-    }
-    return QStringLiteral("*");
-}
-
-QString outcomeName(GameOutcome outcome)
-{
-    switch (outcome) {
-    case GameOutcome::WhiteWin:
-        return QStringLiteral("white_win");
-    case GameOutcome::BlackWin:
-        return QStringLiteral("black_win");
-    case GameOutcome::Draw:
-        return QStringLiteral("draw");
-    }
-    return QStringLiteral("unknown");
-}
-
-QString terminationName(GameTermination termination)
-{
-    switch (termination) {
-    case GameTermination::Checkmate:
-        return QStringLiteral("checkmate");
-    case GameTermination::Stalemate:
-        return QStringLiteral("stalemate");
-    case GameTermination::FiftyMoveRule:
-        return QStringLiteral("fifty_move_rule");
-    case GameTermination::ThreefoldRepetition:
-        return QStringLiteral("threefold_repetition");
-    case GameTermination::InsufficientMaterial:
-        return QStringLiteral("insufficient_material");
-    case GameTermination::TimeForfeit:
-        return QStringLiteral("time_forfeit");
-    case GameTermination::MoveLimit:
-        return QStringLiteral("move_limit");
-    }
-    return QStringLiteral("unknown");
-}
-
 } // namespace
 
 QString sessionTagNow()
@@ -148,6 +101,9 @@ bool writeSessionRecord(const SessionRecord& record,
     if (!record.finalFen.isEmpty()) {
         root["finalFen"] = record.finalFen;
     }
+    if (!record.moveRecords.isEmpty()) {
+        root["moveRecords"] = moveRecordsToJson(record.moveRecords);
+    }
     if (!record.moves.isEmpty()) {
         root["moveFormat"] = QStringLiteral("uci");
         QJsonArray moves;
@@ -162,11 +118,18 @@ bool writeSessionRecord(const SessionRecord& record,
         clocks["blackMs"] = record.blackTimeMs;
         root["clocks"] = clocks;
     }
+    const GameTermination termination =
+        record.hasResult ? record.result.termination
+                         : record.termination;
+    if (termination != GameTermination::Unknown) {
+        root["termination"] = gameTerminationKey(termination);
+    }
     if (record.hasResult) {
         QJsonObject result;
-        result["notation"] = resultNotation(record.result.outcome);
-        result["outcome"] = outcomeName(record.result.outcome);
-        result["termination"] = terminationName(record.result.termination);
+        result["notation"] = gameResultNotation(record.result.outcome);
+        result["outcome"] = gameOutcomeKey(record.result.outcome);
+        result["termination"] =
+            gameTerminationKey(record.result.termination);
         result["message"] = record.result.message;
         root["result"] = result;
     }

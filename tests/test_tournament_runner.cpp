@@ -216,6 +216,13 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     QCOMPARE(moves.size(), 1);
     QCOMPARE(moves.at(0).toString(), QStringLiteral("f7g7"));
 
+    const QJsonArray moveRecords =
+        game.value(QStringLiteral("moveRecords")).toArray();
+    QCOMPARE(moveRecords.size(), 1);
+    QCOMPARE(moveRecords.at(0).toObject()
+                 .value(QStringLiteral("origin")).toString(),
+             QStringLiteral("human"));
+
     const QJsonObject opening = game.value(QStringLiteral("opening")).toObject();
     QCOMPARE(opening.value(QStringLiteral("index")).toInt(), 1);
     QCOMPARE(opening.value(QStringLiteral("name")).toString(),
@@ -344,6 +351,8 @@ void TestTournamentRunner::pausesResumesAndStopsTournament()
     QCOMPARE(records.size(), 1);
     QVERIFY(records.constLast().aborted);
     QCOMPARE(records.constLast().moves, QStringList({QStringLiteral("e2e4")}));
+    QCOMPARE(records.constLast().termination,
+             GameTermination::Stopped);
     QCOMPARE(records.constLast().abortTitle,
              QStringLiteral("Tournament stopped"));
 }

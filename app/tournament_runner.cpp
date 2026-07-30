@@ -45,56 +45,6 @@ QJsonObject summaryToJson(const TournamentSummary& summary)
     return object;
 }
 
-QString resultNotation(GameOutcome outcome)
-{
-    switch (outcome) {
-    case GameOutcome::WhiteWin:
-        return QStringLiteral("1-0");
-    case GameOutcome::BlackWin:
-        return QStringLiteral("0-1");
-    case GameOutcome::Draw:
-        return QStringLiteral("1/2-1/2");
-    }
-
-    return QString();
-}
-
-QString outcomeName(GameOutcome outcome)
-{
-    switch (outcome) {
-    case GameOutcome::WhiteWin:
-        return QStringLiteral("white_win");
-    case GameOutcome::BlackWin:
-        return QStringLiteral("black_win");
-    case GameOutcome::Draw:
-        return QStringLiteral("draw");
-    }
-
-    return QString();
-}
-
-QString terminationName(GameTermination termination)
-{
-    switch (termination) {
-    case GameTermination::Checkmate:
-        return QStringLiteral("checkmate");
-    case GameTermination::Stalemate:
-        return QStringLiteral("stalemate");
-    case GameTermination::FiftyMoveRule:
-        return QStringLiteral("fifty_move_rule");
-    case GameTermination::ThreefoldRepetition:
-        return QStringLiteral("threefold_repetition");
-    case GameTermination::InsufficientMaterial:
-        return QStringLiteral("insufficient_material");
-    case GameTermination::TimeForfeit:
-        return QStringLiteral("time_forfeit");
-    case GameTermination::MoveLimit:
-        return QStringLiteral("move_limit");
-    }
-
-    return QString();
-}
-
 QString pgnDate(const QString& isoTimestamp)
 {
     const QDateTime timestamp = QDateTime::fromString(isoTimestamp, Qt::ISODate);
@@ -147,6 +97,9 @@ QJsonObject gameRecordToJson(const TournamentGameRecord& record)
     }
     opening["moves"] = openingMoves;
     object["opening"] = opening;
+    if (!record.moveRecords.isEmpty()) {
+        object["moveRecords"] = moveRecordsToJson(record.moveRecords);
+    }
 
     QJsonArray moves;
     for (const QString& move : record.moves) {
@@ -154,10 +107,12 @@ QJsonObject gameRecordToJson(const TournamentGameRecord& record)
     }
     object["moves"] = moves;
 
+    if (record.termination != GameTermination::Unknown) {
+        object["termination"] = gameTerminationKey(record.termination);
+    }
     if (record.completed) {
-        object["result"] = resultNotation(record.result.outcome);
-        object["outcome"] = outcomeName(record.result.outcome);
-        object["termination"] = terminationName(record.result.termination);
+        object["result"] = gameResultNotation(record.result.outcome);
+        object["outcome"] = gameOutcomeKey(record.result.outcome);
         object["message"] = record.result.message;
     }
     if (record.aborted) {
@@ -293,6 +248,7 @@ bool TournamentRunner::stop()
         current && !current->completed) {
         current->moves = m_gameController->moveHistoryUci();
         current->aborted = true;
+        current->termination = GameTermination::Stopped;
         current->finishedAtIso = m_finishedAtIso;
         current->abortTitle = m_abortTitle;
         current->abortMessage = m_abortMessage;
@@ -415,6 +371,7 @@ void TournamentRunner::handleMovePlayed(int ply, const QString& uciMove)
     } else {
         current->moves = m_gameController->moveHistoryUci();
     }
+    current->moveRecords = m_gameController->moveRecords();
 }
 
 void TournamentRunner::handleGameFinished(const GameResult& result)
@@ -426,7 +383,10 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
     if (TournamentGameRecord *current = currentGameRecord()) {
         current->completed = true;
         current->result = result;
+        current->termination = result.termination;
         current->finishedAtIso = currentTimestamp();
+        current->moves = m_gameController->moveHistoryUci();
+        current->moveRecords = m_gameController->moveRecords();
     }
 
     ++m_summary.completedGames;
@@ -466,7 +426,9 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
     });
 }
 
-void TournamentRunner::handleGameAborted(const QString& title, const QString& message)
+void TournamentRunner::handleGameAborted(GameTermination termination,
+                                         const QString& title,
+                                         const QString& message)
 {
     if (!m_active) {
         return;
@@ -483,9 +445,12 @@ void TournamentRunner::handleGameAborted(const QString& title, const QString& me
     m_abortMessage = message;
     if (TournamentGameRecord *current = currentGameRecord()) {
         current->aborted = true;
+        current->termination = termination;
         current->finishedAtIso = m_finishedAtIso;
         current->abortTitle = title;
         current->abortMessage = message;
+        current->moves = m_gameController->moveHistoryUci();
+        current->moveRecords = m_gameController->moveRecords();
     }
     persistReport();
     persistPgn();
@@ -595,15 +560,15 @@ bool TournamentRunner::writeTournamentPgn(QString* errorOut) const
         game.white = pgnPlayerName(record.match.player1);
         game.black = pgnPlayerName(record.match.player2);
         game.result = record.completed
-            ? resultNotation(record.result.outcome)
+            ? gameResultNotation(record.result.outcome)
             : QStringLiteral("*");
-        game.termination = record.completed
-            ? terminationName(record.result.termination)
-            : QStringLiteral("abandoned");
+        game.termination = gameTerminationPgn(record.termination);
         game.startFen = record.startFen;
         game.opening = record.openingName;
         game.timeControl = pgnTimeControl(record.match.game);
         game.movesUci = record.moves;
+        game.openingMoveCount =
+            static_cast<int>(record.openingMoves.size());
         games.append(game);
     }
 
