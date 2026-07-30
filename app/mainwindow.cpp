@@ -22,6 +22,7 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDir>
+#include <QFileDialog>
 #include <QEvent>
 #include <QFileInfo>
 #include <QFontDatabase>
@@ -38,6 +39,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QString>
 #include <QStyle>
 #include <QSvgRenderer>
@@ -49,6 +51,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -66,6 +69,85 @@ const char kWhiteEngineCommunicationColor[] = "#247C8F";
 const char kBlackEngineCommunicationColor[] = "#B85C2B";
 constexpr int kHistoryEntryRole = Qt::UserRole;
 constexpr int kHistoryGameRole = Qt::UserRole + 1;
+const char kHistoryHeaderStateKey[] = "ui/historyHeaderState";
+constexpr int kHistoryMinimumColumnWidth = 70;
+
+Qt::CaseSensitivity pathCaseSensitivity()
+{
+#ifdef Q_OS_WIN
+    return Qt::CaseInsensitive;
+#else
+    return Qt::CaseSensitive;
+#endif
+}
+
+bool pathBelongsToDirectory(const QString& path, const QString& directory)
+{
+    if (path.isEmpty() || directory.isEmpty()) {
+        return false;
+    }
+
+    const QFileInfo directoryInfo(directory);
+    const QFileInfo pathInfo(path);
+    QString directoryPath = directoryInfo.canonicalFilePath();
+    QString candidatePath = pathInfo.canonicalFilePath();
+    if (directoryPath.isEmpty()) {
+        directoryPath = directoryInfo.absoluteFilePath();
+    }
+    if (candidatePath.isEmpty()) {
+        candidatePath = pathInfo.absoluteFilePath();
+    }
+
+    directoryPath = QDir::fromNativeSeparators(QDir::cleanPath(directoryPath));
+    candidatePath = QDir::fromNativeSeparators(QDir::cleanPath(candidatePath));
+    const QString prefix = directoryPath + QLatin1Char('/');
+    return QString::compare(candidatePath, directoryPath, pathCaseSensitivity()) == 0
+        || candidatePath.startsWith(prefix, pathCaseSensitivity());
+}
+
+void configureHistoryColumns(QTreeWidget *tree, const QSettings& settings)
+{
+    if (!tree || !tree->header()) {
+        return;
+    }
+
+    QHeaderView *header = tree->header();
+    const QByteArray savedState =
+        settings.value(QString::fromLatin1(kHistoryHeaderStateKey)).toByteArray();
+    const bool restored =
+        !savedState.isEmpty() && header->restoreState(savedState);
+
+    header->setSectionsMovable(false);
+    header->setMinimumSectionSize(kHistoryMinimumColumnWidth);
+    for (int column = 0; column < tree->columnCount(); ++column) {
+        header->setSectionResizeMode(column, QHeaderView::Interactive);
+    }
+    header->setStretchLastSection(true);
+    tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    if (!restored) {
+        tree->setColumnWidth(0, 150);
+        tree->setColumnWidth(1, 95);
+        tree->setColumnWidth(2, 260);
+        tree->setColumnWidth(3, 180);
+    }
+
+    auto *saveTimer = new QTimer(tree);
+    saveTimer->setSingleShot(true);
+    saveTimer->setInterval(250);
+    QObject::connect(header,
+                     &QHeaderView::sectionResized,
+                     saveTimer,
+                     [saveTimer](int, int, int) {
+        saveTimer->start();
+    });
+    QObject::connect(saveTimer, &QTimer::timeout, header, [header]() {
+        QSettings currentSettings;
+        currentSettings.setValue(
+            QString::fromLatin1(kHistoryHeaderStateKey),
+            header->saveState());
+    });
+}
 
 QPixmap colorIndicatorPixmap(Color color, int size)
 {
@@ -405,36 +487,43 @@ void renderHistoryDetails(QPlainTextEdit *editor,
     titleFormat.setFontPointSize(12);
     QTextCharFormat sectionFormat;
     sectionFormat.setFontWeight(QFont::Bold);
-    QTextCharFormat openingFormat = moveTextFormat(true);
+    QTextCharFormat fieldFormat;
+    fieldFormat.setFontWeight(QFont::Normal);
+    fieldFormat.setForeground(editor->palette().color(QPalette::Text));
 
     const auto section = [&cursor, &sectionFormat](const QString& title) {
         cursor.insertText(QStringLiteral("\n\n---------- %1 ----------\n")
                               .arg(title),
                           sectionFormat);
     };
-    const auto field = [&cursor](const QString& name, const QString& value) {
-        if (!value.isEmpty()) {
-            cursor.insertText(QStringLiteral("%1: %2\n").arg(name, value));
-        }
+    const auto field =
+        [&cursor, &fieldFormat](const QString& name, const QString& value) {
+            if (!value.isEmpty()) {
+                cursor.insertText(
+                    QStringLiteral("%1: %2\n").arg(name, value),
+                    fieldFormat);
+            }
     };
 
     if (game) {
         cursor.insertText(
             QObject::tr("TOURNAMENT GAME %1").arg(game->gameNumber),
             titleFormat);
+        const QString result = game->result.isEmpty()
+            ? readableHistoryValue(game->status)
+            : game->result;
         cursor.insertText(QStringLiteral("\n%1 - %2 : %3")
                               .arg(game->white,
                                    game->black,
-                                   game->result.isEmpty()
-                                       ? readableHistoryValue(game->status)
-                                       : game->result));
+                                   gameResultSummary(result,
+                                                     game->termination)));
         section(QObject::tr("Information"));
         field(QObject::tr("Date"), historyDate(game->startedAt));
         field(QObject::tr("Status"), readableHistoryValue(game->status));
         field(QObject::tr("Time"), historyTimeControl(entry));
         field(QObject::tr("Opening"), game->openingName);
         field(QObject::tr("Termination"),
-              readableHistoryValue(game->termination));
+              gameTerminationDisplayName(game->termination));
         field(QObject::tr("Message"), game->message);
         if (!game->moves.isEmpty()) {
             section(QObject::tr("Moves"));
@@ -463,36 +552,35 @@ void renderHistoryDetails(QPlainTextEdit *editor,
         if (!entry.games.isEmpty()) {
             section(QObject::tr("Games"));
             for (const HistoryGame& item : entry.games) {
+                const QString result = item.result.isEmpty()
+                    ? readableHistoryValue(item.status)
+                    : item.result;
                 cursor.insertText(
                     QStringLiteral("%1. %2 - %3 : %4\n")
                         .arg(item.gameNumber)
                         .arg(item.white)
                         .arg(item.black)
-                        .arg(item.result.isEmpty()
-                                 ? readableHistoryValue(item.status)
-                                 : item.result));
+                        .arg(gameResultSummary(result,
+                                               item.termination)));
             }
         }
     } else {
+        const QString result = entry.result.isEmpty()
+            ? readableHistoryValue(entry.status)
+            : entry.result;
         cursor.insertText(QObject::tr("GAME"), titleFormat);
         cursor.insertText(QStringLiteral("\n%1 - %2 : %3")
                               .arg(entry.player1,
                                    entry.player2,
-                                   entry.result.isEmpty()
-                                       ? readableHistoryValue(entry.status)
-                                       : entry.result));
+                                   gameResultSummary(result,
+                                                     entry.termination)));
         section(QObject::tr("Information"));
         field(QObject::tr("Date"), historyDate(entry.startedAt));
         field(QObject::tr("Status"), readableHistoryValue(entry.status));
         field(QObject::tr("Time"), historyTimeControl(entry));
-        if (!entry.openingName.isEmpty()) {
-            cursor.insertText(
-                QStringLiteral("%1: %2\n")
-                    .arg(QObject::tr("Opening"), entry.openingName),
-                openingFormat);
-        }
+        field(QObject::tr("Opening"), entry.openingName);
         field(QObject::tr("Termination"),
-              readableHistoryValue(entry.termination));
+              gameTerminationDisplayName(entry.termination));
         field(QObject::tr("Message"), entry.message);
         if (!entry.moves.isEmpty()) {
             section(QObject::tr("Moves"));
@@ -538,20 +626,6 @@ QString playerDisplayName(const PlayerConfig& player, const QString& fallback)
 
     const QString engineName = QFileInfo(player.enginePath).completeBaseName();
     return engineName.isEmpty() ? fallback : engineName;
-}
-
-QString gameResultNotation(GameOutcome outcome)
-{
-    switch (outcome) {
-    case GameOutcome::WhiteWin:
-        return QStringLiteral("1-0");
-    case GameOutcome::BlackWin:
-        return QStringLiteral("0-1");
-    case GameOutcome::Draw:
-        return QStringLiteral("1/2-1/2");
-    }
-
-    return QString();
 }
 
 struct PlayerStanding {
@@ -711,9 +785,20 @@ void renderTournamentHistory(QPlainTextEdit *editor,
     for (const TournamentGameRecord& game : games) {
         QString status = QObject::tr("IN PROGRESS");
         if (game.completed) {
-            status = gameResultNotation(game.result.outcome);
+            const QString termination =
+                game.result.termination == GameTermination::Unknown
+                ? QString()
+                : gameTerminationKey(game.result.termination);
+            status = gameResultSummary(
+                gameResultNotation(game.result.outcome),
+                termination);
         } else if (game.aborted) {
-            status = QObject::tr("ABORTED");
+            const QString termination =
+                game.termination == GameTermination::Unknown
+                ? QString()
+                : gameTerminationKey(game.termination);
+            status = gameResultSummary(QObject::tr("ABORTED"),
+                                       termination);
         }
 
         const QString whiteName =
@@ -771,40 +856,6 @@ bool ensureSessionDir(const QString& dir, QString* errorOut)
         *errorOut = QStringLiteral("Failed to create directory: %1").arg(dir);
     }
     return false;
-}
-
-QString pgnResult(GameOutcome outcome)
-{
-    switch (outcome) {
-    case GameOutcome::WhiteWin:
-        return QStringLiteral("1-0");
-    case GameOutcome::BlackWin:
-        return QStringLiteral("0-1");
-    case GameOutcome::Draw:
-        return QStringLiteral("1/2-1/2");
-    }
-    return QStringLiteral("*");
-}
-
-QString pgnTermination(GameTermination termination)
-{
-    switch (termination) {
-    case GameTermination::Checkmate:
-        return QStringLiteral("checkmate");
-    case GameTermination::Stalemate:
-        return QStringLiteral("stalemate");
-    case GameTermination::FiftyMoveRule:
-        return QStringLiteral("fifty-move rule");
-    case GameTermination::ThreefoldRepetition:
-        return QStringLiteral("threefold repetition");
-    case GameTermination::InsufficientMaterial:
-        return QStringLiteral("insufficient material");
-    case GameTermination::TimeForfeit:
-        return QStringLiteral("time forfeit");
-    case GameTermination::MoveLimit:
-        return QStringLiteral("move limit");
-    }
-    return QString();
 }
 
 QString pgnDate(const QString& isoTimestamp)
@@ -868,19 +919,34 @@ MainWindow::MainWindow(QWidget *parent)
     configureMoveLegend(ui->labelHistoryMoveLegend);
     configureEngineOutput(ui->whiteEngineOutputText);
     configureEngineOutput(ui->blackEngineOutputText);
-    ui->historyTree->header()->setSectionResizeMode(
-        0, QHeaderView::ResizeToContents);
-    ui->historyTree->header()->setSectionResizeMode(
-        1, QHeaderView::ResizeToContents);
-    ui->historyTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);
-    ui->historyTree->header()->setSectionResizeMode(
-        3, QHeaderView::ResizeToContents);
+    configureHistoryColumns(ui->historyTree, settings);
     ui->historySplitter->setStretchFactor(0, 3);
     ui->historySplitter->setStretchFactor(1, 4);
-    setTournamentTabActive(false);
     ui->pauseButton->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
     ui->stopButton->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
     ui->restartButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    ui->replayFirstButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaSkipBackward));
+    ui->replayPreviousButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaSeekBackward));
+    ui->replayNextButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaSeekForward));
+    ui->replayLastButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaSkipForward));
+    ui->replayCloseButton->setIcon(
+        style()->standardIcon(QStyle::SP_DialogCloseButton));
+    ui->historyRefreshButton->setIcon(
+        style()->standardIcon(QStyle::SP_BrowserReload));
+    ui->historyReplayButton->setIcon(
+        style()->standardIcon(QStyle::SP_MediaPlay));
+    ui->historyLoadReplayButton->setIcon(
+        style()->standardIcon(QStyle::SP_DialogOpenButton));
+    ui->historyOpenPgnButton->setIcon(
+        style()->standardIcon(QStyle::SP_FileIcon));
+    ui->historyOpenFolderButton->setIcon(
+        style()->standardIcon(QStyle::SP_DirOpenIcon));
+    ui->historyDeleteButton->setIcon(
+        style()->standardIcon(QStyle::SP_TrashIcon));
 
     connect(ui->debugButton, &QPushButton::clicked, this, [this]() {
         openDebugWindow();
@@ -893,6 +959,30 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::restartLastSession);
     connect(ui->historyRefreshButton, &QPushButton::clicked,
             this, &MainWindow::refreshHistory);
+    connect(ui->historyReplayButton, &QPushButton::clicked,
+            this, &MainWindow::replaySelectedHistory);
+    connect(ui->historyLoadReplayButton, &QPushButton::clicked,
+            this, &MainWindow::openReplayFile);
+    connect(ui->replayGameCombo, &QComboBox::currentIndexChanged,
+            this, [this](int index) {
+        if (m_replayActive) {
+            loadReplayGame(index);
+        }
+    });
+    connect(ui->replayFirstButton, &QPushButton::clicked,
+            this, [this]() { navigateReplayTo(0); });
+    connect(ui->replayPreviousButton, &QPushButton::clicked,
+            this, [this]() {
+        navigateReplayTo(m_replay.currentPly() - 1);
+    });
+    connect(ui->replayNextButton, &QPushButton::clicked,
+            this, [this]() {
+        navigateReplayTo(m_replay.currentPly() + 1);
+    });
+    connect(ui->replayLastButton, &QPushButton::clicked,
+            this, [this]() { navigateReplayTo(m_replay.totalPly()); });
+    connect(ui->replayCloseButton, &QPushButton::clicked,
+            this, [this]() { leaveReplay(true); });
     connect(ui->historyFilterEdit, &QLineEdit::textChanged,
             this, [this]() {
         populateHistoryTree();
@@ -907,6 +997,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::openSelectedHistoryPgn);
     connect(ui->historyOpenFolderButton, &QPushButton::clicked,
             this, &MainWindow::openSelectedHistoryDirectory);
+    connect(ui->historyDeleteButton, &QPushButton::clicked,
+            this, &MainWindow::deleteSelectedHistorySession);
     connect(ui->tabWidget, &QTabWidget::currentChanged,
             this, [this](int index) {
         if (ui->tabWidget->widget(index) == ui->tabHistory) {
@@ -969,9 +1061,16 @@ MainWindow::MainWindow(QWidget *parent)
         connect(ui->actionManageApplicationData, &QAction::triggered,
                 this, &MainWindow::manageApplicationData);
     }
+    if (ui->actionOpenReplay) {
+        connect(ui->actionOpenReplay, &QAction::triggered,
+                this, &MainWindow::openReplayFile);
+    }
 
     connect(m_gameController, &GameController::positionChanged, this,
             [this](const Xake::Position& position, Xake::Move lastMove) {
+        if (m_replayActive) {
+            return;
+        }
         if (ui && ui->board) {
             ui->board->setPosition(position, lastMove);
         }
@@ -1035,6 +1134,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(m_gameController, &GameController::matchStarted, this, [this](const MatchConfig& match) {
+        clearGameResult();
         updatePlayerNames(match);
         updateGameOpeningLabel();
         updateEngineOutputPanels(match);
@@ -1049,11 +1149,18 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(m_gameController, &GameController::matchStopped, this, [this]() {
+        if (ui && ui->gameResultPanel
+            && ui->gameResultPanel->isHidden()) {
+            showGameResult(QStringLiteral("*"),
+                           gameTerminationKey(GameTermination::Stopped),
+                           tr("The game was stopped before completion."));
+        }
         if (m_hasActiveMatchRecord) {
             finalizeMatchRecord(QStringLiteral("stopped"),
                                 nullptr,
                                 tr("Game stopped"),
-                                tr("The game was stopped before completion."));
+                                tr("The game was stopped before completion."),
+                                GameTermination::Stopped);
         }
         if (m_clockUiTimer) {
             m_clockUiTimer->stop();
@@ -1091,19 +1198,27 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_gameController, &GameController::gameFinished, this,
             [this](const GameResult& result) {
+        showGameResult(gameResultNotation(result.outcome),
+                       gameTerminationKey(result.termination),
+                       result.message);
         finalizeMatchRecord(QStringLiteral("completed"), &result);
     });
     connect(m_gameController, &GameController::gameAborted, this,
-            [this](const QString& title, const QString& message) {
+            [this](GameTermination termination,
+                   const QString& title,
+                   const QString& message) {
+        showGameResult(QStringLiteral("*"),
+                       gameTerminationKey(termination),
+                       message);
         finalizeMatchRecord(QStringLiteral("aborted"),
                             nullptr,
                             title,
-                            message);
+                            message,
+                            termination);
     });
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentStarted, this,
             [this](int totalGames) {
-        setTournamentTabActive(true);
         resetTournamentPanel(totalGames);
         updateSessionControls();
     });
@@ -1211,6 +1326,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     if (ui && ui->board) {
         connect(ui->board, &BoardWidget::moveRequested, this, [this](Xake::Move move) {
+            if (m_replayActive) {
+                return;
+            }
             m_gameController->applyHumanMove(move);
         });
     }
@@ -1299,6 +1417,9 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
             return false;
         }
     }
+    if (m_replayActive) {
+        leaveReplay(false);
+    }
 
     const OpeningEntry& firstOpening = openings.first();
     m_currentOpeningName = firstOpening.name;
@@ -1367,13 +1488,16 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
     if (started) {
         m_lastSessionKind = SessionKind::Match;
         clearTournamentPanel();
-        setTournamentTabActive(false);
         updateSessionControls();
     } else if (m_hasActiveMatchRecord) {
+        showGameResult(QStringLiteral("*"),
+                       gameTerminationKey(GameTermination::StartFailure),
+                       tr("The game could not be started."));
         finalizeMatchRecord(QStringLiteral("aborted"),
                             nullptr,
                             tr("Game start failed"),
-                            tr("The game could not be started."));
+                            tr("The game could not be started."),
+                            GameTermination::StartFailure);
     }
     return started;
 }
@@ -1381,7 +1505,8 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
 void MainWindow::finalizeMatchRecord(const QString& status,
                                      const GameResult* result,
                                      const QString& abortTitle,
-                                     const QString& abortMessage)
+                                     const QString& abortMessage,
+                                     GameTermination termination)
 {
     if (!m_hasActiveMatchRecord || m_matchRecordPath.isEmpty()) {
         return;
@@ -1392,6 +1517,7 @@ void MainWindow::finalizeMatchRecord(const QString& status,
     m_matchRecord.updatedAtIso = timestamp;
     m_matchRecord.finishedAtIso = timestamp;
     m_matchRecord.moves = m_gameController->moveHistoryUci();
+    m_matchRecord.moveRecords = m_gameController->moveRecords();
     m_matchRecord.finalFen =
         QString::fromStdString(m_gameController->currentPosition().get_FEN());
     m_matchRecord.whiteTimeMs = m_gameController->remainingTimeMs(WHITE);
@@ -1399,6 +1525,9 @@ void MainWindow::finalizeMatchRecord(const QString& status,
     m_matchRecord.hasResult = result != nullptr;
     if (result) {
         m_matchRecord.result = *result;
+        m_matchRecord.termination = result->termination;
+    } else {
+        m_matchRecord.termination = termination;
     }
     m_matchRecord.abortTitle = abortTitle;
     m_matchRecord.abortMessage = abortMessage;
@@ -1413,13 +1542,15 @@ void MainWindow::finalizeMatchRecord(const QString& status,
     pgn.date = pgnDate(m_matchRecord.startTimeIso);
     pgn.white = pgnPlayerName(m_matchRecord.match.player1);
     pgn.black = pgnPlayerName(m_matchRecord.match.player2);
-    pgn.result = result ? pgnResult(result->outcome) : QStringLiteral("*");
-    pgn.termination = result ? pgnTermination(result->termination)
-                             : status;
+    pgn.result = result ? gameResultNotation(result->outcome)
+                        : QStringLiteral("*");
+    pgn.termination = gameTerminationPgn(m_matchRecord.termination);
     pgn.startFen = m_matchRecord.startFen;
     pgn.opening = m_matchRecord.openingName;
     pgn.timeControl = pgnTimeControl(m_matchRecord.match.game);
     pgn.movesUci = m_matchRecord.moves;
+    pgn.openingMoveCount =
+        static_cast<int>(m_matchRecord.openingMoves.size());
     const QString pgnPath = QFileInfo(m_matchRecordPath)
         .dir()
         .filePath(QStringLiteral("game.pgn"));
@@ -1557,7 +1688,7 @@ void MainWindow::updateSessionControls()
     }
 
     if (ui->board) {
-        bool humanTurn = gameActive && !paused;
+        bool humanTurn = !m_replayActive && gameActive && !paused;
         if (humanTurn) {
             const MatchConfig match = m_gameController->matchConfig();
             const bool whiteToMove =
@@ -1567,26 +1698,7 @@ void MainWindow::updateSessionControls()
         }
         ui->board->setMoveInputEnabled(humanTurn);
     }
-}
-
-void MainWindow::setTournamentTabActive(bool active)
-{
-    if (!ui || !ui->tabWidget || !ui->tabTournament) {
-        return;
-    }
-
-    const int index = ui->tabWidget->indexOf(ui->tabTournament);
-    if (index < 0) {
-        return;
-    }
-
-    if (!active && ui->tabWidget->currentIndex() == index) {
-        ui->tabWidget->setCurrentIndex(0);
-    }
-    ui->tabWidget->setTabEnabled(index, active);
-    if (active) {
-        ui->tabWidget->setCurrentIndex(index);
-    }
+    updateHistoryDeleteButton();
 }
 
 void MainWindow::clearTournamentPanel()
@@ -1596,7 +1708,7 @@ void MainWindow::clearTournamentPanel()
     }
 
     if (ui->labelTournamentStatus) {
-        ui->labelTournamentStatus->setText(tr("No tournament in progress"));
+        ui->labelTournamentStatus->setText(tr("No tournament loaded"));
     }
     if (ui->labelTournamentOpening) {
         ui->labelTournamentOpening->setText(tr("Opening: -"));
@@ -1619,6 +1731,12 @@ void MainWindow::clearSessionPanels()
         return;
     }
 
+    m_replayActive = false;
+    m_replay.clear();
+    m_replayGames.clear();
+    ui->replayPanel->hide();
+    ui->replayGameCombo->clear();
+    clearGameResult();
     m_gameController->clearFinishedSessionData();
     m_currentOpeningName.clear();
     m_currentOpeningIndex = 0;
@@ -1641,7 +1759,6 @@ void MainWindow::clearSessionPanels()
     ui->blackEngineOutputText->clear();
 
     clearTournamentPanel();
-    setTournamentTabActive(false);
     updateClockUi();
 }
 
@@ -1712,6 +1829,12 @@ void MainWindow::updateGameMoveList()
         return;
     }
 
+    if (m_replayActive) {
+        renderGameMovesInColumns(ui->gameMovesText,
+                                 m_replay.visibleMoves(),
+                                 m_replay.game().openingMoveCount);
+        return;
+    }
     renderGameMovesInColumns(ui->gameMovesText,
                              m_gameController->moveHistoryUci(),
                              m_gameController->initialMoveCount());
@@ -1723,8 +1846,49 @@ void MainWindow::updateCapturedPieces()
         return;
     }
 
+    if (m_replayActive) {
+        ui->capturedPiecesWidget->setCapturedPieces(
+            m_replay.capturedPieces());
+        return;
+    }
     ui->capturedPiecesWidget->setCapturedPieces(
         m_gameController->capturedPieces());
+}
+
+void MainWindow::clearGameResult()
+{
+    if (!ui || !ui->gameResultPanel) {
+        return;
+    }
+
+    ui->gameResultPanel->hide();
+    ui->labelGameResultSummary->clear();
+    ui->labelGameResultMessage->clear();
+    ui->labelGameResultMessage->hide();
+}
+
+void MainWindow::showGameResult(const QString& result,
+                                const QString& termination,
+                                const QString& message)
+{
+    if (!ui || !ui->gameResultPanel
+        || !ui->labelGameResultSummary
+        || !ui->labelGameResultMessage) {
+        return;
+    }
+
+    const QString summary = gameResultSummary(result, termination);
+    const QString detail = message.trimmed();
+    if (summary.isEmpty() && detail.isEmpty()) {
+        clearGameResult();
+        return;
+    }
+
+    ui->labelGameResultSummary->setText(
+        summary.isEmpty() ? tr("Game finished") : summary);
+    ui->labelGameResultMessage->setText(detail);
+    ui->labelGameResultMessage->setVisible(!detail.isEmpty());
+    ui->gameResultPanel->show();
 }
 
 void MainWindow::refreshHistory()
@@ -1830,9 +1994,11 @@ void MainWindow::populateHistoryTree()
                   .arg(entry.player1Wins)
                   .arg(entry.player2Wins)
                   .arg(entry.draws)
-            : entry.result.isEmpty()
-                ? readableHistoryValue(entry.status)
-                : entry.result;
+            : gameResultSummary(
+                  entry.result.isEmpty()
+                      ? readableHistoryValue(entry.status)
+                      : entry.result,
+                  entry.termination);
         auto *top = new QTreeWidgetItem(ui->historyTree);
         top->setText(0, historyDate(entry.startedAt));
         top->setText(1, type);
@@ -1864,9 +2030,13 @@ void MainWindow::populateHistoryTree()
             child->setText(1, tr("Game %1").arg(game.gameNumber));
             child->setText(2, QStringLiteral("%1 - %2")
                                   .arg(game.white, game.black));
-            child->setText(3, game.result.isEmpty()
-                                  ? readableHistoryValue(game.status)
-                                  : game.result);
+            child->setText(
+                3,
+                gameResultSummary(
+                    game.result.isEmpty()
+                        ? readableHistoryValue(game.status)
+                        : game.result,
+                    game.termination));
             child->setData(0, kHistoryEntryRole, entryIndex);
             child->setData(0, kHistoryGameRole, gameIndex);
         }
@@ -1896,12 +2066,18 @@ void MainWindow::updateHistoryDetails()
                 : tr("No sessions match the current filter."));
         ui->historyOpenPgnButton->setEnabled(false);
         ui->historyOpenFolderButton->setEnabled(false);
+        ui->historyReplayButton->setEnabled(false);
+        updateHistoryDeleteButton();
         return;
     }
 
     const int entryIndex =
         selected->data(0, kHistoryEntryRole).toInt();
     if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        ui->historyReplayButton->setEnabled(false);
+        ui->historyOpenPgnButton->setEnabled(false);
+        ui->historyOpenFolderButton->setEnabled(false);
+        updateHistoryDeleteButton();
         return;
     }
 
@@ -1917,6 +2093,64 @@ void MainWindow::updateHistoryDetails()
         && QFileInfo::exists(entry.pgnFilePath));
     ui->historyOpenFolderButton->setEnabled(
         QDir(entry.directoryPath).exists());
+    const bool hasRecord = !entry.recordFilePath.isEmpty()
+        && QFileInfo::exists(entry.recordFilePath);
+    const bool hasPgn = !entry.pgnFilePath.isEmpty()
+        && QFileInfo::exists(entry.pgnFilePath);
+    ui->historyReplayButton->setEnabled(
+        (hasRecord || hasPgn)
+        && (entry.type != HistorySessionType::Tournament
+            || !entry.games.isEmpty() || hasPgn));
+    updateHistoryDeleteButton();
+}
+
+void MainWindow::updateHistoryDeleteButton()
+{
+    if (!ui || !ui->historyTree || !ui->historyDeleteButton) {
+        return;
+    }
+
+    QPushButton *button = ui->historyDeleteButton;
+    button->setEnabled(false);
+    button->setText(tr("Delete"));
+    button->setToolTip(QString());
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected) {
+        return;
+    }
+
+    const int entryIndex = selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const HistoryEntry& entry = m_historyEntries.at(entryIndex);
+    const int gameIndex = selected->data(0, kHistoryGameRole).toInt();
+    if (gameIndex >= 0) {
+        button->setToolTip(
+            tr("Individual tournament games cannot be deleted. "
+               "Select the tournament instead."));
+        return;
+    }
+
+    const bool active =
+        (m_tournamentRunner && m_tournamentRunner->isActive())
+        || (m_gameController && m_gameController->isActive());
+    if (active) {
+        button->setToolTip(
+            tr("Stop the current game or tournament before deleting history."));
+        return;
+    }
+
+    if (!isManagedHistorySessionDirectory(sessionsRootDir(),
+                                          entry.directoryPath)) {
+        button->setToolTip(
+            tr("This session is not stored in the managed history directory."));
+        return;
+    }
+
+    button->setEnabled(true);
 }
 
 void MainWindow::openSelectedHistoryPgn()
@@ -1972,12 +2206,393 @@ void MainWindow::openSelectedHistoryDirectory()
     }
 }
 
+void MainWindow::deleteSelectedHistorySession()
+{
+    if (!ui || !ui->historyTree) {
+        return;
+    }
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected || selected->data(0, kHistoryGameRole).toInt() >= 0) {
+        return;
+    }
+
+    const int entryIndex = selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const bool active =
+        (m_tournamentRunner && m_tournamentRunner->isActive())
+        || (m_gameController && m_gameController->isActive());
+    if (active) {
+        QMessageBox::warning(
+            this,
+            tr("Delete history"),
+            tr("Stop the current game or tournament before deleting history."));
+        return;
+    }
+
+    const HistoryEntry entry = m_historyEntries.at(entryIndex);
+    const QString sessionsDirectory = sessionsRootDir();
+    if (!isManagedHistorySessionDirectory(sessionsDirectory,
+                                          entry.directoryPath)) {
+        QMessageBox::warning(
+            this,
+            tr("Delete history"),
+            tr("The selected session is not stored in the managed history "
+               "directory and will not be deleted."));
+        return;
+    }
+
+    const bool tournament =
+        entry.type == HistorySessionType::Tournament;
+    QMessageBox confirmation(
+        QMessageBox::Warning,
+        tournament ? tr("Delete tournament") : tr("Delete game"),
+        tournament
+            ? tr("Delete the selected tournament permanently?")
+            : tr("Delete the selected game permanently?"),
+        QMessageBox::NoButton,
+        this);
+    confirmation.setInformativeText(
+        tr("%1 - %2\n\nAll associated records, PGN files and communication "
+           "logs will be removed. This action cannot be undone.")
+            .arg(entry.player1, entry.player2));
+    QPushButton *deleteButton = confirmation.addButton(
+        tournament ? tr("Delete tournament") : tr("Delete game"),
+        QMessageBox::DestructiveRole);
+    QPushButton *cancelButton =
+        confirmation.addButton(QMessageBox::Cancel);
+    confirmation.setDefaultButton(cancelButton);
+    confirmation.setEscapeButton(cancelButton);
+    confirmation.exec();
+    if (confirmation.clickedButton() != deleteButton) {
+        return;
+    }
+
+    const QString sessionDirectory = entry.directoryPath;
+    const bool replayUsesSession =
+        std::any_of(m_replayGames.cbegin(),
+                    m_replayGames.cend(),
+                    [&sessionDirectory](const ReplayGame& game) {
+        return pathBelongsToDirectory(game.sourcePath, sessionDirectory);
+    });
+    const QString communicationLogPath =
+        m_gameController ? m_gameController->communicationLogFilePath()
+                         : QString();
+    const bool logUsesSession =
+        pathBelongsToDirectory(communicationLogPath, sessionDirectory);
+    const bool displayedSession =
+        replayUsesSession
+        || pathBelongsToDirectory(m_matchRecordPath, sessionDirectory)
+        || (m_tournamentRunner
+            && pathBelongsToDirectory(m_tournamentRunner->reportFilePath(),
+                                      sessionDirectory))
+        || logUsesSession;
+
+    if (logUsesSession && m_gameController) {
+        if (m_debugDialog) {
+            m_debugDialog->close();
+        }
+        m_gameController->closeCommunicationLog();
+        updateDebugLogPath();
+    }
+
+    const HistorySessionDeletionResult result =
+        deleteHistorySession(sessionsDirectory, sessionDirectory);
+    if (!result.succeeded()) {
+        QMessageBox::warning(
+            this,
+            tr("Delete history"),
+            tr("The selected session could not be deleted:\n\n%1")
+                .arg(result.error));
+        refreshHistory();
+        return;
+    }
+
+    if (displayedSession) {
+        clearSessionPanels();
+    }
+    refreshHistory();
+    if (ui->statusbar) {
+        ui->statusbar->showMessage(
+            tournament ? tr("Tournament deleted.")
+                       : tr("Game deleted."),
+            4000);
+    }
+}
+
+void MainWindow::openReplayFile()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        tr("Open game replay"),
+        QString(),
+        tr("Replay files (*.json *.pgn *.epd *.edp);;"
+           "Xake records (*.json);;PGN games (*.pgn);;"
+           "EPD positions (*.epd *.edp);;All files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const ReplayLoadResult loaded = loadReplayFile(path);
+    if (!loaded.success()) {
+        QMessageBox::warning(this, tr("Open replay"), loaded.error);
+        return;
+    }
+    beginReplay(loaded.games);
+}
+
+void MainWindow::replaySelectedHistory()
+{
+    if (!ui || !ui->historyTree) {
+        return;
+    }
+
+    QTreeWidgetItem *selected = ui->historyTree->currentItem();
+    if (!selected) {
+        return;
+    }
+    const int entryIndex =
+        selected->data(0, kHistoryEntryRole).toInt();
+    if (entryIndex < 0 || entryIndex >= m_historyEntries.size()) {
+        return;
+    }
+
+    const HistoryEntry& entry = m_historyEntries.at(entryIndex);
+    QString path = entry.recordFilePath;
+    if (path.isEmpty() || !QFileInfo::exists(path)) {
+        path = entry.pgnFilePath;
+    }
+    ReplayLoadResult loaded = loadReplayFile(path);
+    if (!loaded.success()
+        && !entry.pgnFilePath.isEmpty()
+        && QFileInfo::exists(entry.pgnFilePath)
+        && QFileInfo(entry.pgnFilePath).absoluteFilePath()
+            != QFileInfo(path).absoluteFilePath()) {
+        loaded = loadReplayFile(entry.pgnFilePath);
+    }
+    if (!loaded.success()) {
+        QMessageBox::warning(this, tr("Replay history"), loaded.error);
+        return;
+    }
+
+    int gameIndex = selected->data(0, kHistoryGameRole).toInt();
+    if (gameIndex < 0) {
+        gameIndex = 0;
+    }
+    beginReplay(loaded.games, gameIndex);
+}
+
+bool MainWindow::beginReplay(const QVector<ReplayGame>& games,
+                             int initialGameIndex)
+{
+    if (games.isEmpty()) {
+        return false;
+    }
+
+    for (int index = 0; index < games.size(); ++index) {
+        GameReplay validator;
+        QString error;
+        if (!validator.load(games.at(index), &error)) {
+            QMessageBox::warning(
+                this,
+                tr("Invalid replay"),
+                tr("Game %1 could not be loaded:\n%2")
+                    .arg(games.at(index).gameNumber)
+                    .arg(error));
+            return false;
+        }
+    }
+
+    const bool tournamentActive =
+        m_tournamentRunner && m_tournamentRunner->isActive();
+    const bool gameActive =
+        m_gameController && m_gameController->isActive();
+    if (!m_replayActive && (tournamentActive || gameActive)) {
+        const QString sessionName =
+            tournamentActive ? tr("tournament") : tr("game");
+        const QMessageBox::StandardButton answer = QMessageBox::question(
+            this,
+            tr("Session in progress"),
+            tr("A %1 is currently in progress.\n\n"
+               "Do you want to stop it and open the replay?")
+                .arg(sessionName),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+        if (answer != QMessageBox::Yes || !stopActiveSession()) {
+            return false;
+        }
+    }
+
+    clearSessionPanels();
+    m_replayGames = games;
+    m_replayActive = true;
+    ui->board->setMoveInputEnabled(false);
+    ui->replayPanel->show();
+
+    {
+        const QSignalBlocker blocker(ui->replayGameCombo);
+        ui->replayGameCombo->clear();
+        for (const ReplayGame& game : games) {
+            QString label = tr("Game %1").arg(game.gameNumber);
+            if (!game.white.isEmpty() || !game.black.isEmpty()) {
+                label += QStringLiteral(" | %1 - %2")
+                    .arg(game.white.isEmpty() ? tr("White") : game.white,
+                         game.black.isEmpty() ? tr("Black") : game.black);
+            } else if (!game.title.isEmpty()) {
+                label += QStringLiteral(" | %1").arg(game.title);
+            }
+            const QString summary =
+                gameResultSummary(game.result, game.termination);
+            if (!summary.isEmpty()) {
+                label += QStringLiteral(" | %1").arg(summary);
+            }
+            ui->replayGameCombo->addItem(label);
+        }
+        initialGameIndex = qBound(
+            0, initialGameIndex, static_cast<int>(games.size()) - 1);
+        ui->replayGameCombo->setCurrentIndex(initialGameIndex);
+    }
+    ui->replayGameCombo->setEnabled(games.size() > 1);
+
+    if (!loadReplayGame(initialGameIndex)) {
+        leaveReplay(false);
+        return false;
+    }
+    ui->tabWidget->setCurrentWidget(ui->tabGame);
+    updateSessionControls();
+    return true;
+}
+
+bool MainWindow::loadReplayGame(int index)
+{
+    if (!m_replayActive
+        || index < 0 || index >= m_replayGames.size()) {
+        return false;
+    }
+
+    QString error;
+    if (!m_replay.load(m_replayGames.at(index), &error)) {
+        QMessageBox::warning(this, tr("Invalid replay"), error);
+        return false;
+    }
+
+    {
+        const QSignalBlocker blocker(ui->replayGameCombo);
+        ui->replayGameCombo->setCurrentIndex(index);
+    }
+    const ReplayGame& game = m_replay.game();
+    const QString white =
+        game.white.isEmpty() ? tr("White") : game.white;
+    const QString black =
+        game.black.isEmpty() ? tr("Black") : game.black;
+    ui->labelWhitePlayer->setText(white);
+    ui->labelBlackPlayer->setText(black);
+    ui->labelReplayTitle->setText(
+        tr("Replay | %1 - %2").arg(white, black));
+    showGameResult(game.result, game.termination);
+    m_currentOpeningName = game.openingName;
+    m_currentOpeningIndex = game.gameNumber;
+    m_currentOpeningCount = 1;
+    updateGameOpeningLabel();
+    navigateReplayTo(0);
+    if (ui->statusbar) {
+        ui->statusbar->showMessage(
+            tr("Replay loaded: game %1, %n move(s).",
+               nullptr,
+               m_replay.totalPly())
+                .arg(game.gameNumber),
+            5000);
+    }
+    return true;
+}
+
+void MainWindow::navigateReplayTo(int ply)
+{
+    if (!m_replayActive
+        || ply < 0 || ply > m_replay.totalPly()) {
+        return;
+    }
+
+    const int previousPly = m_replay.currentPly();
+    if (!m_replay.goToPly(ply)) {
+        QMessageBox::warning(
+            this,
+            tr("Replay error"),
+            tr("The replay position could not be reconstructed."));
+        return;
+    }
+    const Move animatedMove =
+        ply == previousPly + 1 ? m_replay.lastMove() : NOMOVE;
+    updateReplayUi(animatedMove);
+}
+
+void MainWindow::updateReplayUi(Move animatedMove)
+{
+    if (!m_replayActive || !ui) {
+        return;
+    }
+    ui->board->setPosition(m_replay.position(), animatedMove);
+    updateSideToMoveLabel(m_replay.position());
+    updateGameMoveList();
+    updateCapturedPieces();
+    updateClockUi();
+    updateReplayControls();
+}
+
+void MainWindow::updateReplayControls()
+{
+    if (!m_replayActive || !ui) {
+        return;
+    }
+    const int current = m_replay.currentPly();
+    const int total = m_replay.totalPly();
+    ui->labelReplayProgress->setText(
+        tr("Ply %1 / %2").arg(current).arg(total));
+    ui->replayFirstButton->setEnabled(current > 0);
+    ui->replayPreviousButton->setEnabled(current > 0);
+    ui->replayNextButton->setEnabled(current < total);
+    ui->replayLastButton->setEnabled(current < total);
+}
+
+void MainWindow::leaveReplay(bool resetGamePanel)
+{
+    if (!m_replayActive) {
+        return;
+    }
+
+    if (resetGamePanel) {
+        clearSessionPanels();
+    } else {
+        m_replayActive = false;
+        m_replay.clear();
+        m_replayGames.clear();
+        ui->replayPanel->hide();
+        ui->replayGameCombo->clear();
+    }
+
+    updateSessionControls();
+
+    if (resetGamePanel && ui->statusbar) {
+        ui->statusbar->showMessage(tr("Replay closed."), 3000);
+    }
+}
+
 void MainWindow::updateGameOpeningLabel()
 {
     if (!ui || !ui->labelGameOpening) {
         return;
     }
 
+    if (m_replayActive) {
+        ui->labelGameOpening->setText(
+            m_currentOpeningName.isEmpty()
+                ? tr("Replay | Opening: -")
+                : tr("Replay | Opening: %1").arg(m_currentOpeningName));
+        return;
+    }
     if (m_currentOpeningName.isEmpty()) {
         ui->labelGameOpening->setText(tr("Opening: -"));
         return;
@@ -2274,6 +2889,17 @@ void MainWindow::updateClockUi()
         return;
     }
 
+    if (m_replayActive) {
+        const qint64 whiteMs = m_replay.whiteTimeMs();
+        const qint64 blackMs = m_replay.blackTimeMs();
+        ui->whiteTimeLcd->display(
+            whiteMs >= 0 ? formatClockMs(whiteMs)
+                         : QStringLiteral("--:--"));
+        ui->blackTimeLcd->display(
+            blackMs >= 0 ? formatClockMs(blackMs)
+                         : QStringLiteral("--:--"));
+        return;
+    }
     if (!m_gameController->isActive() || !m_gameController->timeControlEnabled()) {
         ui->whiteTimeLcd->display("--:--");
         ui->blackTimeLcd->display("--:--");

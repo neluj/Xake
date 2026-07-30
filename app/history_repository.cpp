@@ -129,11 +129,17 @@ HistoryEntry parseMatch(const QJsonObject& root,
     entry.result = result.value(QStringLiteral("notation")).toString();
     entry.termination = result.value(QStringLiteral("termination")).toString();
     entry.message = result.value(QStringLiteral("message")).toString();
+    const QJsonObject abort =
+        root.value(QStringLiteral("abort")).toObject();
+    if (entry.termination.isEmpty()) {
+        entry.termination =
+            root.value(QStringLiteral("termination")).toString();
+    }
+    if (entry.termination.isEmpty()) {
+        entry.termination = abort.value(QStringLiteral("title")).toString();
+    }
     if (entry.message.isEmpty()) {
-        entry.message = root.value(QStringLiteral("abort"))
-                            .toObject()
-                            .value(QStringLiteral("message"))
-                            .toString();
+        entry.message = abort.value(QStringLiteral("message")).toString();
     }
 
     const QString pgnPath =
@@ -156,6 +162,10 @@ HistoryGame parseTournamentGame(const QJsonObject& object)
     game.result = object.value(QStringLiteral("result")).toString();
     game.termination = object.value(QStringLiteral("termination")).toString();
     game.message = object.value(QStringLiteral("message")).toString();
+    if (game.termination.isEmpty()) {
+        game.termination =
+            object.value(QStringLiteral("abortTitle")).toString();
+    }
     if (game.message.isEmpty()) {
         game.message = object.value(QStringLiteral("abortMessage")).toString();
     }
@@ -253,6 +263,58 @@ QDateTime sortTimestamp(const HistoryEntry& entry)
     return QFileInfo(entry.directoryPath).lastModified();
 }
 
+Qt::CaseSensitivity pathCaseSensitivity()
+{
+#ifdef Q_OS_WIN
+    return Qt::CaseInsensitive;
+#else
+    return Qt::CaseSensitive;
+#endif
+}
+
+QString canonicalManagedSessionPath(const QString& sessionsDirectory,
+                                    const QString& sessionDirectory,
+                                    QString *error)
+{
+    const QFileInfo rootInfo(sessionsDirectory);
+    if (!rootInfo.exists() || !rootInfo.isDir()) {
+        if (error) {
+            *error = QStringLiteral("The sessions directory is not available.");
+        }
+        return {};
+    }
+
+    const QFileInfo sessionInfo(sessionDirectory);
+    if (!sessionInfo.exists() || !sessionInfo.isDir()) {
+        if (error) {
+            *error = QStringLiteral("The selected session directory is not available.");
+        }
+        return {};
+    }
+    if (sessionInfo.isSymLink()) {
+        if (error) {
+            *error = QStringLiteral("Symbolic links cannot be deleted from history.");
+        }
+        return {};
+    }
+
+    const QString rootPath = rootInfo.canonicalFilePath();
+    const QString sessionPath = sessionInfo.canonicalFilePath();
+    const QString parentPath = QFileInfo(sessionPath).absoluteDir().canonicalPath();
+    if (rootPath.isEmpty() || sessionPath.isEmpty() || parentPath.isEmpty()
+        || QString::compare(rootPath,
+                            parentPath,
+                            pathCaseSensitivity()) != 0) {
+        if (error) {
+            *error = QStringLiteral(
+                "The selected directory is not a managed Xake session.");
+        }
+        return {};
+    }
+
+    return sessionPath;
+}
+
 } // namespace
 
 HistoryLoadResult loadSessionHistory(const QString& sessionsDirectory)
@@ -302,5 +364,34 @@ HistoryLoadResult loadSessionHistory(const QString& sessionsDirectory)
               [](const HistoryEntry& left, const HistoryEntry& right) {
         return sortTimestamp(left) > sortTimestamp(right);
     });
+    return result;
+}
+
+bool isManagedHistorySessionDirectory(const QString& sessionsDirectory,
+                                      const QString& sessionDirectory)
+{
+    return !canonicalManagedSessionPath(
+                sessionsDirectory, sessionDirectory, nullptr)
+                .isEmpty();
+}
+
+HistorySessionDeletionResult deleteHistorySession(
+    const QString& sessionsDirectory,
+    const QString& sessionDirectory)
+{
+    HistorySessionDeletionResult result;
+    const QString managedPath = canonicalManagedSessionPath(
+        sessionsDirectory, sessionDirectory, &result.error);
+    if (managedPath.isEmpty()) {
+        return result;
+    }
+
+    if (!QDir(managedPath).removeRecursively()) {
+        result.error = QStringLiteral(
+            "The selected session directory could not be deleted.");
+        return result;
+    }
+
+    result.deleted = true;
     return result;
 }

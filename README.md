@@ -12,16 +12,17 @@
   </p>
 </div>
 
-Xake 0.2.0 is a desktop chess GUI for playing games and running matches between
+Xake 0.3.0 is a desktop chess GUI for playing games and running matches between
 UCI engines. It validates moves with its own legal move generator, manages chess
-clocks, loads opening suites, records sessions, displays captured material, and
-shows engine communication for diagnosis.
+clocks, loads opening suites, records sessions, replays saved games and
+tournaments, displays captured material, and shows engine communication for
+diagnosis.
 
 ## Installation
 
 The supported binary package is Windows x86-64:
 
-1. Download the `Xake-0.2.0-Windows-*.zip` package.
+1. Download the `Xake-0.3.0-Windows-*.zip` package.
 2. Extract the complete archive to a writable directory.
 3. Run `bin/Xake.exe`.
 
@@ -88,6 +89,29 @@ Pause stops the active search and resumes it with the remaining clock. Stop and
 restart require confirmation. Starting a new session can terminate the active
 one after confirmation.
 
+## Replays
+
+Use **Play > Replay game/tournament...** to open a saved game or tournament
+directly, or select an entry in **History** and click **Replay selected**.
+Replay supports:
+
+- `session_*.json` game records.
+- `tournament_report.json` reports, including incomplete tournaments.
+- PGN files with one or more games.
+- EPD files as collections of static positions.
+
+Tournament reports and multi-game PGNs expose a game selector. **First**,
+**Previous**, **Next**, and **Last** navigate without starting engines or chess
+clocks. The board, move list, captured pieces, side to move, opening label, and
+recorded clock values are reconstructed for the selected ply.
+
+The Game tab displays the recorded result and termination reason in the same
+place used for completed live games. Xake validates every imported move with
+its legal move generator before entering Replay. JSON files produced by 0.2.0
+remain supported; their final clocks are shown when available, while per-move
+clocks are available in records
+written by 0.3.0 or newer.
+
 ## Records and Logs
 
 Session data is written below:
@@ -98,14 +122,20 @@ Session data is written below:
 
 Each timestamped session directory can contain:
 
-- `session_*.json`: current game or tournament state.
+- `session_*.json`: current game or tournament state, including structured move
+  records in 0.3.0 and newer.
 - `game.pgn` or `tournament.pgn`: portable game notation.
 - `tournament_report.json`: tournament summary and individual games.
 - `uci_communication.log`: timestamped commands, engine output, and errors.
 
-The History tab reads these records. The Output tab displays current engine
-output, and the Debug window displays the unified UCI communication log.
-Application settings are stored by `QSettings`; on Windows this is under
+The History tab reads these records. Its columns are resizable and retain their
+widths between launches. A standalone game or a complete tournament can be
+deleted from History after confirmation; individual games inside a tournament
+cannot be removed separately.
+
+The Output tab displays current engine output, and the Debug window displays
+the unified UCI communication log. Application settings are stored by
+`QSettings`; on Windows this is under
 `HKEY_CURRENT_USER\Software\Xake\Xake`.
 
 Use **Settings > Manage application data...** to remove records, PGN files,
@@ -116,8 +146,8 @@ files are never deleted.
 ## Testing
 
 The CTest suite covers FEN handling, legal move execution, move generation,
-perft positions, clocks and game termination, settings, openings, tournament
-flow, session records, history, and widgets.
+perft positions, clocks and game termination, settings, openings, replay,
+tournament flow, session records, history, and widgets.
 
 For release packaging and clean-environment checks, see
 [`docs/RELEASE_WINDOWS.md`](docs/RELEASE_WINDOWS.md).

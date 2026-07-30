@@ -405,13 +405,28 @@ bool appendPgnGame(const RawPgnGame& raw,
         uciMoves.append(QString::fromStdString(algebraic_move(move)));
     }
 
-    openings->append(OpeningEntry{
+    OpeningEntry entry{
         gameNumber,
         openingName(raw.tags, gameNumber),
         startFen,
         QString::fromStdString(position.get_FEN()),
         uciMoves
-    });
+    };
+    entry.event = raw.tags.value(QStringLiteral("EVENT")).trimmed();
+    entry.white = raw.tags.value(QStringLiteral("WHITE")).trimmed();
+    entry.black = raw.tags.value(QStringLiteral("BLACK")).trimmed();
+    entry.result = raw.tags.value(QStringLiteral("RESULT")).trimmed();
+    entry.termination = raw.tags.value(QStringLiteral("TERMINATION")).trimmed();
+    entry.round = raw.tags.value(QStringLiteral("ROUND")).trimmed();
+    bool openingCountValid = false;
+    const int openingCount =
+        raw.tags.value(QStringLiteral("XAKEOPENINGPLYCOUNT"))
+            .toInt(&openingCountValid);
+    if (openingCountValid) {
+        entry.openingMoveCount =
+            qBound(0, openingCount, static_cast<int>(uciMoves.size()));
+    }
+    openings->append(entry);
     return true;
 }
 

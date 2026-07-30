@@ -22,12 +22,14 @@ struct SessionRecord {
     QString status = QStringLiteral("in_progress");
     QString updatedAtIso;
     QString finishedAtIso;
+    QVector<MoveRecord> moveRecords;
     QStringList moves;
     QString finalFen;
     qint64 whiteTimeMs = -1;
     qint64 blackTimeMs = -1;
     bool hasResult = false;
     GameResult result;
+    GameTermination termination = GameTermination::Unknown;
     QString abortTitle;
     QString abortMessage;
 };

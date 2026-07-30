@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "app_state.h"
+#include "game_replay.h"
 #include "game_controller.h"
 #include "history_repository.h"
 #include "session_record.h"
@@ -50,7 +51,6 @@ private:
     void stopCurrentSession();
     void restartLastSession();
     void updateSessionControls();
-    void setTournamentTabActive(bool active);
     void clearTournamentPanel();
     void clearSessionPanels();
     void resetTournamentPanel(int totalGames);
@@ -58,6 +58,10 @@ private:
     void updateTournamentHistory();
     void updateGameMoveList();
     void updateCapturedPieces();
+    void clearGameResult();
+    void showGameResult(const QString& result,
+                        const QString& termination,
+                        const QString& message = QString());
     void updateGameOpeningLabel();
     void updatePlayerNames(const MatchConfig& match);
     void updateEngineOutputPanels(const MatchConfig& match);
@@ -68,14 +72,26 @@ private:
     void refreshHistory();
     void populateHistoryTree();
     void updateHistoryDetails();
+    void updateHistoryDeleteButton();
     void openSelectedHistoryPgn();
     void openSelectedHistoryDirectory();
+    void deleteSelectedHistorySession();
+    void openReplayFile();
+    void replaySelectedHistory();
+    bool beginReplay(const QVector<ReplayGame>& games,
+                     int initialGameIndex = 0);
+    bool loadReplayGame(int index);
+    void navigateReplayTo(int ply);
+    void updateReplayUi(Xake::Move animatedMove = Xake::NOMOVE);
+    void updateReplayControls();
+    void leaveReplay(bool resetGamePanel);
     void updateClockUi();
     void updateSideToMoveLabel(const Xake::Position& position);
     void finalizeMatchRecord(const QString& status,
                              const GameResult* result = nullptr,
                              const QString& abortTitle = QString(),
-                             const QString& abortMessage = QString());
+                             const QString& abortMessage = QString(),
+                             GameTermination termination = GameTermination::Unknown);
 
     Ui::MainWindow *ui;
     UciClient *m_uciClient;
@@ -97,5 +113,8 @@ private:
     QString m_matchRecordPath;
     bool m_hasActiveMatchRecord = false;
     QVector<HistoryEntry> m_historyEntries;
+    QVector<ReplayGame> m_replayGames;
+    GameReplay m_replay;
+    bool m_replayActive = false;
 };
 #endif // MAINWINDOW_H

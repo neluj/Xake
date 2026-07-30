@@ -24,6 +24,8 @@ private slots:
     void loadsMatchesAndTournamentsNewestFirst();
     void skipsCorruptRecordsWithoutLosingValidHistory();
     void fallsBackToTournamentSessionRecord();
+    void deletesManagedSessionDirectory();
+    void rejectsUnsafeSessionDirectories();
 };
 
 void TestHistoryRepository::loadsMatchesAndTournamentsNewestFirst()
@@ -128,6 +130,8 @@ void TestHistoryRepository::loadsMatchesAndTournamentsNewestFirst()
     QCOMPARE(tournament.games.first().openingName,
              QStringLiteral("Italian Game"));
     QCOMPARE(tournament.games.first().openingMoveCount, 2);
+    QCOMPARE(tournament.games.first().termination,
+             QStringLiteral("checkmate"));
     QVERIFY(!tournament.pgnFilePath.isEmpty());
 
     const HistoryEntry& match = history.entries.at(1);
@@ -135,6 +139,7 @@ void TestHistoryRepository::loadsMatchesAndTournamentsNewestFirst()
     QCOMPARE(match.player1, QStringLiteral("Alice"));
     QCOMPARE(match.player2, QStringLiteral("Dragon"));
     QCOMPARE(match.result, QStringLiteral("1-0"));
+    QCOMPARE(match.termination, QStringLiteral("checkmate"));
     QCOMPARE(match.openingName, QStringLiteral("Sicilian"));
     QCOMPARE(match.openingMoveCount, 2);
     QCOMPARE(match.moves.size(), 3);
@@ -159,6 +164,7 @@ void TestHistoryRepository::skipsCorruptRecordsWithoutLosingValidHistory()
             "sessionType": "match",
             "sessionTag": "ok",
             "status": "stopped",
+            "termination": "stopped",
             "startTime": "2026-07-26T09:00:00Z",
             "match": {
                 "player1": {"name": "White"},
@@ -170,6 +176,8 @@ void TestHistoryRepository::skipsCorruptRecordsWithoutLosingValidHistory()
     const HistoryLoadResult history = loadSessionHistory(root.path());
     QCOMPARE(history.entries.size(), 1);
     QCOMPARE(history.entries.first().sessionTag, QStringLiteral("ok"));
+    QCOMPARE(history.entries.first().termination,
+             QStringLiteral("stopped"));
     QCOMPARE(history.warnings.size(), 1);
     QVERIFY(history.warnings.first().contains(QStringLiteral("session_bad.json")));
 }
@@ -208,6 +216,71 @@ void TestHistoryRepository::fallsBackToTournamentSessionRecord()
     QCOMPARE(history.entries.first().totalGames, 6);
     QCOMPARE(history.entries.first().status, QStringLiteral("in_progress"));
     QCOMPARE(history.warnings.size(), 1);
+}
+
+void TestHistoryRepository::deletesManagedSessionDirectory()
+{
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+
+    const QString sessionsDirectory =
+        root.filePath(QStringLiteral("sessions"));
+    const QString sessionDirectory =
+        QDir(sessionsDirectory).filePath(QStringLiteral("session_1"));
+    const QString nestedDirectory =
+        QDir(sessionDirectory).filePath(QStringLiteral("nested"));
+    QVERIFY(QDir().mkpath(nestedDirectory));
+    QVERIFY(writeTextFile(
+        QDir(sessionDirectory).filePath(QStringLiteral("game.pgn")),
+        QByteArrayLiteral("[Result \"1-0\"]\n")));
+    QVERIFY(writeTextFile(
+        QDir(nestedDirectory).filePath(QStringLiteral("engine.log")),
+        QByteArrayLiteral("uci\n")));
+
+    QVERIFY(isManagedHistorySessionDirectory(sessionsDirectory,
+                                             sessionDirectory));
+    const HistorySessionDeletionResult result =
+        deleteHistorySession(sessionsDirectory, sessionDirectory);
+    QVERIFY2(result.succeeded(), qPrintable(result.error));
+    QVERIFY(!QDir(sessionDirectory).exists());
+    QVERIFY(QDir(sessionsDirectory).exists());
+}
+
+void TestHistoryRepository::rejectsUnsafeSessionDirectories()
+{
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+
+    const QString sessionsDirectory =
+        root.filePath(QStringLiteral("sessions"));
+    const QString sessionDirectory =
+        QDir(sessionsDirectory).filePath(QStringLiteral("session_1"));
+    const QString nestedDirectory =
+        QDir(sessionDirectory).filePath(QStringLiteral("nested"));
+    const QString outsideDirectory =
+        root.filePath(QStringLiteral("outside"));
+    QVERIFY(QDir().mkpath(nestedDirectory));
+    QVERIFY(QDir().mkpath(outsideDirectory));
+
+    QVERIFY(!isManagedHistorySessionDirectory(sessionsDirectory,
+                                              sessionsDirectory));
+    QVERIFY(!isManagedHistorySessionDirectory(sessionsDirectory,
+                                              nestedDirectory));
+    QVERIFY(!isManagedHistorySessionDirectory(sessionsDirectory,
+                                              outsideDirectory));
+    QVERIFY(!isManagedHistorySessionDirectory(
+        sessionsDirectory,
+        QDir(sessionsDirectory).filePath(QStringLiteral("missing"))));
+
+    QVERIFY(!deleteHistorySession(sessionsDirectory,
+                                  sessionsDirectory).succeeded());
+    QVERIFY(!deleteHistorySession(sessionsDirectory,
+                                  nestedDirectory).succeeded());
+    QVERIFY(!deleteHistorySession(sessionsDirectory,
+                                  outsideDirectory).succeeded());
+    QVERIFY(QDir(sessionsDirectory).exists());
+    QVERIFY(QDir(nestedDirectory).exists());
+    QVERIFY(QDir(outsideDirectory).exists());
 }
 
 QTEST_APPLESS_MAIN(TestHistoryRepository)

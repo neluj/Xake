@@ -284,6 +284,10 @@ QString gameText(const PgnGameRecord& game, QString* errorOut)
     if (!game.opening.isEmpty()) {
         text += tag(QStringLiteral("Opening"), game.opening);
     }
+    if (game.openingMoveCount > 0) {
+        text += tag(QStringLiteral("XakeOpeningPlyCount"),
+                    QString::number(game.openingMoveCount));
+    }
     if (!game.timeControl.isEmpty()) {
         text += tag(QStringLiteral("TimeControl"), game.timeControl);
     }
