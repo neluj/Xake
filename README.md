@@ -91,8 +91,9 @@ one after confirmation.
 
 ## Replays
 
-Use **Play > Replay file...** to open a saved game or tournament directly, or
-select an entry in **History** and click **Replay selected**. Replay supports:
+Use **Play > Replay game/tournament...** to open a saved game or tournament
+directly, or select an entry in **History** and click **Replay selected**.
+Replay supports:
 
 - `session_*.json` game records.
 - `tournament_report.json` reports, including incomplete tournaments.
@@ -104,9 +105,11 @@ Tournament reports and multi-game PGNs expose a game selector. **First**,
 clocks. The board, move list, captured pieces, side to move, opening label, and
 recorded clock values are reconstructed for the selected ply.
 
-Xake validates every imported move with its legal move generator before
-entering Replay. JSON files produced by 0.2.0 remain supported; their final
-clocks are shown when available, while per-move clocks are available in records
+The Game tab displays the recorded result and termination reason in the same
+place used for completed live games. Xake validates every imported move with
+its legal move generator before entering Replay. JSON files produced by 0.2.0
+remain supported; their final clocks are shown when available, while per-move
+clocks are available in records
 written by 0.3.0 or newer.
 
 ## Records and Logs
@@ -125,9 +128,14 @@ Each timestamped session directory can contain:
 - `tournament_report.json`: tournament summary and individual games.
 - `uci_communication.log`: timestamped commands, engine output, and errors.
 
-The History tab reads these records. The Output tab displays current engine
-output, and the Debug window displays the unified UCI communication log.
-Application settings are stored by `QSettings`; on Windows this is under
+The History tab reads these records. Its columns are resizable and retain their
+widths between launches. A standalone game or a complete tournament can be
+deleted from History after confirmation; individual games inside a tournament
+cannot be removed separately.
+
+The Output tab displays current engine output, and the Debug window displays
+the unified UCI communication log. Application settings are stored by
+`QSettings`; on Windows this is under
 `HKEY_CURRENT_USER\Software\Xake\Xake`.
 
 Use **Settings > Manage application data...** to remove records, PGN files,

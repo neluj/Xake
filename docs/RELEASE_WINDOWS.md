@@ -43,11 +43,18 @@ virtual machine that has neither Qt nor MinGW installed:
 4. Open About and verify version 0.3.0.
 5. Configure two known UCI engines and complete a short timed game.
 6. Run a two-game tournament with color alternation and an opening file.
-7. Replay the saved game from History and navigate First, Previous, Next, and
+7. Confirm the result and termination reason appear in Game, Tournament, and
+   History as applicable.
+8. Replay the saved game from History and navigate First, Previous, Next, and
    Last.
-8. Open the tournament report and PGN through Replay and switch games.
-9. Verify History, PGN, JSON report, unified UCI log, pause, stop, and restart.
-10. Reboot the VM and verify that the last engine paths and settings are restored.
+9. Open the tournament report and PGN through Replay and switch games.
+10. Resize the History columns and verify their widths survive an application
+    restart.
+11. Delete the saved standalone game and the complete test tournament from
+    History. Confirm a single game inside a tournament cannot be deleted.
+12. Verify PGN, JSON report, unified UCI log, pause, stop, and restart.
+13. Reboot the VM and verify that the last engine paths and settings are
+    restored.
 
 The isolated smoke test is automated in CI. A genuinely clean VM remains a
 manual release gate because the build host cannot prove the absence of system
