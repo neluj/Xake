@@ -51,7 +51,6 @@ private:
     void stopCurrentSession();
     void restartLastSession();
     void updateSessionControls();
-    void setTournamentTabActive(bool active);
     void clearTournamentPanel();
     void clearSessionPanels();
     void resetTournamentPanel(int totalGames);

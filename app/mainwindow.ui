@@ -446,7 +446,7 @@
               </font>
              </property>
              <property name="text">
-              <string>No tournament in progress</string>
+              <string>No tournament loaded</string>
              </property>
              <property name="alignment">
               <set>Qt::AlignCenter</set>

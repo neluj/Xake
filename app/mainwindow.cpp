@@ -922,7 +922,6 @@ MainWindow::MainWindow(QWidget *parent)
     configureHistoryColumns(ui->historyTree, settings);
     ui->historySplitter->setStretchFactor(0, 3);
     ui->historySplitter->setStretchFactor(1, 4);
-    setTournamentTabActive(false);
     ui->pauseButton->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
     ui->stopButton->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
     ui->restartButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
@@ -1207,7 +1206,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentStarted, this,
             [this](int totalGames) {
-        setTournamentTabActive(true);
         resetTournamentPanel(totalGames);
         updateSessionControls();
     });
@@ -1477,7 +1475,6 @@ bool MainWindow::startMatch(const MatchConfig& config, const TournamentConfig* t
     if (started) {
         m_lastSessionKind = SessionKind::Match;
         clearTournamentPanel();
-        setTournamentTabActive(false);
         updateSessionControls();
     } else if (m_hasActiveMatchRecord) {
         finalizeMatchRecord(QStringLiteral("aborted"),
@@ -1688,23 +1685,6 @@ void MainWindow::updateSessionControls()
     updateHistoryDeleteButton();
 }
 
-void MainWindow::setTournamentTabActive(bool active)
-{
-    if (!ui || !ui->tabWidget || !ui->tabTournament) {
-        return;
-    }
-
-    const int index = ui->tabWidget->indexOf(ui->tabTournament);
-    if (index < 0) {
-        return;
-    }
-
-    if (!active && ui->tabWidget->currentIndex() == index) {
-        ui->tabWidget->setCurrentIndex(0);
-    }
-    ui->tabWidget->setTabEnabled(index, active);
-}
-
 void MainWindow::clearTournamentPanel()
 {
     if (!ui) {
@@ -1712,7 +1692,7 @@ void MainWindow::clearTournamentPanel()
     }
 
     if (ui->labelTournamentStatus) {
-        ui->labelTournamentStatus->setText(tr("No tournament in progress"));
+        ui->labelTournamentStatus->setText(tr("No tournament loaded"));
     }
     if (ui->labelTournamentOpening) {
         ui->labelTournamentOpening->setText(tr("Opening: -"));
@@ -1762,7 +1742,6 @@ void MainWindow::clearSessionPanels()
     ui->blackEngineOutputText->clear();
 
     clearTournamentPanel();
-    setTournamentTabActive(false);
     updateClockUi();
 }
 
