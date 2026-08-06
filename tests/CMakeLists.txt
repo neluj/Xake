@@ -158,6 +158,7 @@ add_executable(tournament_runner_tests
     ${CMAKE_SOURCE_DIR}/app/move_record.cpp
     ${CMAKE_SOURCE_DIR}/app/pgn_export.cpp
     ${CMAKE_SOURCE_DIR}/app/storage_paths.cpp
+    ${CMAKE_SOURCE_DIR}/app/tournament_schedule.cpp
     ${CMAKE_SOURCE_DIR}/app/tournament_runner.cpp
     ${CMAKE_SOURCE_DIR}/app/uci_client.cpp
 )
@@ -166,6 +167,17 @@ target_include_directories(tournament_runner_tests PRIVATE ${CMAKE_SOURCE_DIR}/a
 target_link_libraries(tournament_runner_tests PRIVATE Qt6::Test chess_core)
 
 add_test(NAME tournament_runner_tests COMMAND tournament_runner_tests)
+
+add_executable(tournament_schedule_tests
+    test_tournament_schedule.cpp
+    ${CMAKE_SOURCE_DIR}/app/match_settings_validation.cpp
+    ${CMAKE_SOURCE_DIR}/app/tournament_schedule.cpp
+)
+
+target_include_directories(tournament_schedule_tests PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(tournament_schedule_tests PRIVATE Qt6::Test chess_core)
+
+add_test(NAME tournament_schedule_tests COMMAND tournament_schedule_tests)
 
 add_executable(perft_tests
     test_perft.cpp

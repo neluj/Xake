@@ -79,6 +79,8 @@ public:
     bool pauseMatch();
     bool resumeMatch();
     bool applyHumanMove(Xake::Move move);
+    bool resignHumanPlayer();
+    bool canHumanResign() const;
 
     bool isActive() const;
     bool isPaused() const;

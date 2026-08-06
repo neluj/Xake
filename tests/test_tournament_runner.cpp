@@ -45,6 +45,26 @@ TournamentConfig tournamentConfig(const QString& fen, int games, int maxMoves = 
     return config;
 }
 
+TournamentConfig multiParticipantConfig(const QString& fen)
+{
+    TournamentConfig config = tournamentConfig(fen, 1);
+    config.participants.clear();
+    for (int index = 0; index < 3; ++index) {
+        PlayerConfig player;
+        player.type = PlayerType::Human;
+        player.name = QStringLiteral("Player %1").arg(index + 1);
+        config.participants.append({
+            QStringLiteral("p%1").arg(index + 1),
+            player
+        });
+    }
+    config.match.player1 = config.participants.at(0).player;
+    config.match.player2 = config.participants.at(1).player;
+    config.rounds = 1;
+    config.gamesPerPairing = 1;
+    return config;
+}
+
 QVector<OpeningEntry> singleOpening(const QString& fen)
 {
     return {OpeningEntry{1, QStringLiteral("Test opening"), fen, fen, {}}};
@@ -63,6 +83,9 @@ private slots:
     void persistsReportAtLifecycleBoundaries();
     void reusesEachOpeningWithBothColors();
     void pausesResumesAndStopsTournament();
+    void playsRoundRobinWithThreeParticipants();
+    void waitsBeforeStartingHumanGamesWhenRequested();
+    void continuesAfterEngineFailure();
 };
 
 void TestTournamentRunner::playsAllGamesAndAlternatesColors()
@@ -184,10 +207,13 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     QVERIFY(document.isObject());
 
     const QJsonObject root = document.object();
+    QCOMPARE(root.value(QStringLiteral("formatVersion")).toInt(), 2);
     QCOMPARE(root.value(QStringLiteral("status")).toString(), QStringLiteral("completed"));
     QCOMPARE(root.value(QStringLiteral("moveFormat")).toString(), QStringLiteral("uci"));
 
     const QJsonObject tournament = root.value(QStringLiteral("tournament")).toObject();
+    QCOMPARE(tournament.value(QStringLiteral("participants"))
+                 .toArray().size(), 2);
     const QJsonObject gameSettings = tournament.value(QStringLiteral("game")).toObject();
     QCOMPARE(gameSettings.value(QStringLiteral("baseTimeSeconds")).toInt(),
              tournamentConfig(QString::fromLatin1(kMateInOneFen), 1)
@@ -197,6 +223,8 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     const QJsonObject summary = root.value(QStringLiteral("summary")).toObject();
     QCOMPARE(summary.value(QStringLiteral("completedGames")).toInt(), 1);
     QCOMPARE(summary.value(QStringLiteral("whiteWins")).toInt(), 1);
+    QCOMPARE(summary.value(QStringLiteral("standings"))
+                 .toArray().size(), 2);
 
     const QJsonArray games = root.value(QStringLiteral("games")).toArray();
     QCOMPARE(games.size(), 1);
@@ -205,6 +233,10 @@ void TestTournamentRunner::writesTournamentReportWithMoves()
     QCOMPARE(game.value(QStringLiteral("colorsSwapped")).toBool(), false);
     QCOMPARE(game.value(QStringLiteral("result")).toString(), QStringLiteral("1-0"));
     QCOMPARE(game.value(QStringLiteral("termination")).toString(), QStringLiteral("checkmate"));
+    QCOMPARE(game.value(QStringLiteral("whiteParticipantId")).toString(),
+             QStringLiteral("participant-1"));
+    QCOMPARE(game.value(QStringLiteral("blackParticipantId")).toString(),
+             QStringLiteral("participant-2"));
     QCOMPARE(game.value(QStringLiteral("white")).toObject()
                  .value(QStringLiteral("name")).toString(),
              QStringLiteral("Player 1"));
@@ -355,6 +387,117 @@ void TestTournamentRunner::pausesResumesAndStopsTournament()
              GameTermination::Stopped);
     QCOMPARE(records.constLast().abortTitle,
              QStringLiteral("Tournament stopped"));
+}
+
+void TestTournamentRunner::playsRoundRobinWithThreeParticipants()
+{
+    GameController controller;
+    TournamentRunner runner(&controller);
+    int startedGames = 0;
+    bool finished = false;
+    QSet<QString> pairings;
+    connect(&runner, &TournamentRunner::tournamentGameStarted,
+            this,
+            [&startedGames, &pairings](
+                int, int, const MatchConfig& match) {
+        ++startedGames;
+        QStringList names{match.player1.name, match.player2.name};
+        names.sort();
+        pairings.insert(names.join(QLatin1Char('-')));
+    });
+    connect(&runner, &TournamentRunner::tournamentFinished,
+            this, [&finished](const TournamentSummary&) {
+        finished = true;
+    });
+
+    const QString fen = QString::fromLatin1(kMateInOneFen);
+    QVERIFY(runner.start(
+        multiParticipantConfig(fen),
+        singleOpening(fen),
+        QString(),
+        QStringLiteral("three_players")));
+
+    for (int game = 0; game < 3; ++game) {
+        QTRY_COMPARE(startedGames, game + 1);
+        QVERIFY(controller.applyHumanMove(
+            makeCandidate('f', '7', 'g', '7')));
+    }
+    QTRY_VERIFY(finished);
+
+    const TournamentSummary summary = runner.summary();
+    QCOMPARE(summary.totalGames, 3);
+    QCOMPARE(summary.completedGames, 3);
+    QCOMPARE(summary.standings.size(), 3);
+    QCOMPARE(pairings.size(), 3);
+    for (const TournamentStanding& standing : summary.standings) {
+        QCOMPARE(standing.games(), 2);
+    }
+}
+
+void TestTournamentRunner::waitsBeforeStartingHumanGamesWhenRequested()
+{
+    GameController controller;
+    TournamentRunner runner(&controller);
+    runner.setHumanGameConfirmationEnabled(true);
+    int readyRequests = 0;
+    connect(&runner, &TournamentRunner::humanGameReadyRequested,
+            this,
+            [&readyRequests](int, int, const MatchConfig&) {
+        ++readyRequests;
+    });
+
+    const QString fen = QString::fromLatin1(kStartFen);
+    QVERIFY(runner.start(
+        tournamentConfig(fen, 1),
+        singleOpening(fen),
+        QString(),
+        QStringLiteral("human_ready")));
+    QCOMPARE(readyRequests, 1);
+    QVERIFY(runner.isWaitingForHumanGame());
+    QVERIFY(!controller.isActive());
+
+    QVERIFY(runner.startPendingHumanGame());
+    QVERIFY(!runner.isWaitingForHumanGame());
+    QVERIFY(controller.isActive());
+    QVERIFY(runner.stop());
+}
+
+void TestTournamentRunner::continuesAfterEngineFailure()
+{
+    GameController controller;
+    TournamentRunner runner(&controller);
+    int startedGames = 0;
+    connect(&runner, &TournamentRunner::tournamentGameStarted,
+            this, [&startedGames](int, int, const MatchConfig&) {
+        ++startedGames;
+    });
+
+    const QString fen = QString::fromLatin1(kStartFen);
+    QVERIFY(runner.start(
+        tournamentConfig(fen, 2),
+        singleOpening(fen),
+        QString(),
+        QStringLiteral("engine_forfeit")));
+    QCOMPARE(startedGames, 1);
+
+    emit controller.engineFailureOccurred(
+        EngineFailure::ProcessCrashed,
+        EngineSide::White,
+        QStringLiteral("White engine crashed."));
+    emit controller.gameAborted(
+        GameTermination::EngineFailure,
+        QStringLiteral("Engine error"),
+        QStringLiteral("White engine crashed."));
+    controller.stopMatch();
+
+    QTRY_COMPARE(startedGames, 2);
+    QCOMPARE(runner.summary().completedGames, 1);
+    const TournamentGameRecord first =
+        runner.gameRecords().first();
+    QVERIFY(first.completed);
+    QCOMPARE(first.result.outcome, GameOutcome::BlackWin);
+    QCOMPARE(first.termination, GameTermination::EngineFailure);
+    QVERIFY(runner.stop());
 }
 
 int main(int argc, char **argv)

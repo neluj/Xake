@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QVector>
 
 enum class PlayerType {
     Human = 0,
@@ -29,10 +30,24 @@ struct MatchConfig {
     GameConfig game;
 };
 
+enum class TournamentFormat {
+    RoundRobin = 0,
+    Gauntlet = 1
+};
+
+struct TournamentParticipant {
+    QString id;
+    PlayerConfig player;
+};
+
 struct TournamentConfig {
+    // Retained for 0.1-0.3 settings compatibility. Participants are canonical.
     MatchConfig match;
+    QVector<TournamentParticipant> participants;
+    TournamentFormat format = TournamentFormat::RoundRobin;
+    QString gauntletParticipantId;
     QString tournamentType;
-    int rounds = 0;
-    int gamesPerPairing = 0;
+    int rounds = 1;
+    int gamesPerPairing = 2;
     int maxMoves = 0;
 };

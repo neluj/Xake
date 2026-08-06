@@ -51,6 +51,7 @@ class TestAppSettings : public QObject
 private slots:
     void emptySettingsHaveNoPreviousSessions();
     void persistsMatchAndTournamentConfigurations();
+    void migratesLegacyTwoParticipantTournament();
 };
 
 void TestAppSettings::emptySettingsHaveNoPreviousSessions()
@@ -74,7 +75,19 @@ void TestAppSettings::persistsMatchAndTournamentConfigurations()
     const MatchConfig match = sampleMatch();
     TournamentConfig tournament;
     tournament.match = match;
-    tournament.tournamentType = QStringLiteral("Round-robin");
+    PlayerConfig thirdPlayer;
+    thirdPlayer.type = PlayerType::Engine;
+    thirdPlayer.name = QStringLiteral("Dragon");
+    thirdPlayer.enginePath =
+        QStringLiteral("C:/engines/dragon.exe");
+    tournament.participants = {
+        {QStringLiteral("stockfish"), match.player1},
+        {QStringLiteral("julen"), match.player2},
+        {QStringLiteral("dragon"), thirdPlayer}
+    };
+    tournament.format = TournamentFormat::Gauntlet;
+    tournament.gauntletParticipantId = QStringLiteral("stockfish");
+    tournament.tournamentType = QStringLiteral("Gauntlet");
     tournament.rounds = 3;
     tournament.gamesPerPairing = 2;
     tournament.maxMoves = 150;
@@ -102,7 +115,57 @@ void TestAppSettings::persistsMatchAndTournamentConfigurations()
     QCOMPARE(restored.lastTournament.gamesPerPairing,
              tournament.gamesPerPairing);
     QCOMPARE(restored.lastTournament.maxMoves, tournament.maxMoves);
+    QCOMPARE(restored.lastTournament.format,
+             TournamentFormat::Gauntlet);
+    QCOMPARE(restored.lastTournament.gauntletParticipantId,
+             QStringLiteral("stockfish"));
+    QCOMPARE(restored.lastTournament.participants.size(), 3);
+    QCOMPARE(restored.lastTournament.participants.at(2).id,
+             QStringLiteral("dragon"));
+    QCOMPARE(restored.lastTournament.participants.at(2).player.name,
+             QStringLiteral("Dragon"));
 }
+
+void TestAppSettings::migratesLegacyTwoParticipantTournament()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QSettings settings(
+        directory.filePath(QStringLiteral("legacy.ini")),
+        QSettings::IniFormat);
+    settings.setValue(QStringLiteral("lastTournament/available"), true);
+    settings.setValue(QStringLiteral("lastTournament/player1/type"),
+                      static_cast<int>(PlayerType::Human));
+    settings.setValue(QStringLiteral("lastTournament/player1/name"),
+                      QStringLiteral("Alice"));
+    settings.setValue(QStringLiteral("lastTournament/player2/type"),
+                      static_cast<int>(PlayerType::Human));
+    settings.setValue(QStringLiteral("lastTournament/player2/name"),
+                      QStringLiteral("Bob"));
+    settings.setValue(
+        QStringLiteral("lastTournament/game/useStartPos"), true);
+    settings.setValue(
+        QStringLiteral("lastTournament/game/startPosition"),
+        QStringLiteral("startpos"));
+    settings.setValue(
+        QStringLiteral("lastTournament/tournamentType"),
+        QStringLiteral("Round-robin"));
+    settings.setValue(QStringLiteral("lastTournament/rounds"), 2);
+    settings.setValue(
+        QStringLiteral("lastTournament/gamesPerPairing"), 2);
+    settings.sync();
+
+    const AppState state = loadAppState(settings);
+    QVERIFY(state.hasLastTournament);
+    QCOMPARE(state.lastTournament.participants.size(), 2);
+    QCOMPARE(state.lastTournament.participants.at(0).player.name,
+             QStringLiteral("Alice"));
+    QCOMPARE(state.lastTournament.participants.at(1).player.name,
+             QStringLiteral("Bob"));
+    QCOMPARE(state.lastTournament.format,
+             TournamentFormat::RoundRobin);
+}
+
 
 QTEST_APPLESS_MAIN(TestAppSettings)
 
