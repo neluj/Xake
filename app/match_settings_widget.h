@@ -26,6 +26,7 @@ public:
     PlayerConfig player2Config() const;
     GameConfig gameConfig() const;
     void setConfig(const MatchConfig& config);
+    void setPlayersVisible(bool visible);
 
 private:
     void applyTimeControlSelection();
