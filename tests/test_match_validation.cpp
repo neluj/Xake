@@ -16,6 +16,7 @@ private slots:
     void validateInvalidFen();
     void normalizeTournamentType();
     void validateTournamentFields();
+    void validateMultiParticipantTournament();
     void validateOpeningFile();
     void validMatchConfig();
 };
@@ -118,6 +119,55 @@ void TestMatchValidation::validateTournamentFields()
     config.gamesPerPairing = 0;
     error = validateTournamentConfig(config);
     QCOMPARE(error, ValidationError::InvalidGamesPerPairing);
+}
+
+void TestMatchValidation::validateMultiParticipantTournament()
+{
+    TournamentConfig config;
+    config.match.game.useStartPos = true;
+    config.match.game.startPosition = QStringLiteral("startpos");
+    config.format = TournamentFormat::Gauntlet;
+    config.rounds = 1;
+    config.gamesPerPairing = 2;
+    for (int index = 0; index < 3; ++index) {
+        PlayerConfig player;
+        player.type = PlayerType::Human;
+        player.name = QStringLiteral("Human %1").arg(index + 1);
+        config.participants.append({
+            QStringLiteral("p%1").arg(index + 1),
+            player
+        });
+    }
+    config.gauntletParticipantId = QStringLiteral("p1");
+
+    QCOMPARE(validateTournamentConfig(config),
+             ValidationError::None);
+
+    TournamentConfig duplicate = config;
+    duplicate.participants[2].player.name =
+        duplicate.participants[1].player.name;
+    QCOMPARE(validateTournamentConfig(duplicate),
+             ValidationError::DuplicateTournamentParticipantName);
+
+    TournamentConfig invalidMain = config;
+    invalidMain.gauntletParticipantId =
+        QStringLiteral("missing");
+    QCOMPARE(validateTournamentConfig(invalidMain),
+             ValidationError::InvalidGauntletParticipant);
+
+    TournamentConfig tooFew = config;
+    tooFew.participants.resize(1);
+    QCOMPARE(validateTournamentConfig(tooFew),
+             ValidationError::TooFewTournamentParticipants);
+
+    TournamentConfig missingEngine = config;
+    missingEngine.participants[2].player.type =
+        PlayerType::Engine;
+    missingEngine.participants[2].player.name =
+        QStringLiteral("Engine");
+    missingEngine.participants[2].player.enginePath.clear();
+    QCOMPARE(validateTournamentConfig(missingEngine),
+             ValidationError::MissingTournamentParticipantEngine);
 }
 
 void TestMatchValidation::validateOpeningFile()

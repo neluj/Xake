@@ -310,6 +310,56 @@ bool GameController::resumeMatch()
     return true;
 }
 
+bool GameController::canHumanResign() const
+{
+    return m_active
+        && (m_config.player1.type == PlayerType::Human
+            || m_config.player2.type == PlayerType::Human);
+}
+
+bool GameController::resignHumanPlayer()
+{
+    if (!canHumanResign()) {
+        return false;
+    }
+
+    const bool whiteIsHuman =
+        m_config.player1.type == PlayerType::Human;
+    const bool blackIsHuman =
+        m_config.player2.type == PlayerType::Human;
+    Color resigningSide = m_position.get_side_to_move();
+    if (whiteIsHuman != blackIsHuman) {
+        resigningSide = whiteIsHuman ? WHITE : BLACK;
+    }
+
+    const PlayerConfig& resigningPlayer =
+        resigningSide == WHITE
+        ? m_config.player1
+        : m_config.player2;
+    const QString fallback =
+        resigningSide == WHITE ? tr("White") : tr("Black");
+    const QString resigningName =
+        resigningPlayer.name.trimmed().isEmpty()
+        ? fallback
+        : resigningPlayer.name.trimmed();
+    const Color winner = ~resigningSide;
+    const QString winnerName =
+        winner == WHITE
+        ? (m_config.player1.name.trimmed().isEmpty()
+               ? tr("White")
+               : m_config.player1.name.trimmed())
+        : (m_config.player2.name.trimmed().isEmpty()
+               ? tr("Black")
+               : m_config.player2.name.trimmed());
+
+    return finishGame(
+        winner == WHITE ? GameOutcome::WhiteWin
+                        : GameOutcome::BlackWin,
+        GameTermination::Resignation,
+        tr("Resignation"),
+        tr("%1 resigns. %2 wins.").arg(resigningName, winnerName));
+}
+
 bool GameController::applyHumanMove(Move move)
 {
     if (!m_active || m_paused) {

@@ -559,42 +559,8 @@
              <property name="text">
               <string/>
              </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelTournamentResultsDivider">
-             <property name="font">
-              <font>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="text">
-              <string>--------------- Results ---------------</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-           </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="tournamentStandingsText">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
              <property name="alignment">
               <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
-             </property>
-             <property name="wordWrap">
-              <bool>true</bool>
              </property>
              <property name="textInteractionFlags">
               <set>Qt::TextSelectableByMouse</set>
@@ -602,35 +568,105 @@
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="labelTournamentGamesDivider">
-             <property name="font">
-              <font>
-               <bold>true</bold>
-              </font>
+            <widget class="QSplitter" name="tournamentContentSplitter">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
              </property>
-             <property name="text">
-              <string>---------- Games and moves ----------</string>
+             <property name="childrenCollapsible">
+              <bool>false</bool>
              </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-           </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelTournamentMoveLegend">
-             <property name="text">
-              <string/>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPlainTextEdit" name="tournamentHistoryText">
-             <property name="readOnly">
-              <bool>true</bool>
-             </property>
+             <widget class="QWidget" name="tournamentResultsPanel" native="true">
+              <layout class="QVBoxLayout" name="tournamentResultsLayout">
+               <property name="spacing">
+                <number>2</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="labelTournamentResultsDivider">
+                 <property name="font">
+                  <font>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="text">
+                  <string>--------------- Results ---------------</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPlainTextEdit" name="tournamentStandingsText">
+                 <property name="readOnly">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+             <widget class="QWidget" name="tournamentGamesPanel" native="true">
+              <layout class="QVBoxLayout" name="tournamentGamesLayout">
+               <property name="spacing">
+                <number>2</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="labelTournamentGamesDivider">
+                 <property name="font">
+                  <font>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="text">
+                  <string>---------- Games and moves ----------</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelTournamentMoveLegend">
+                 <property name="text">
+                  <string/>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPlainTextEdit" name="tournamentHistoryText">
+                 <property name="readOnly">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
             </widget>
            </item>
           </layout>
@@ -878,6 +914,25 @@
         </property>
         <property name="toolTip">
          <string>Pause or resume the current game or tournament</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="resignButton">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>110</width>
+          <height>32</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Resign</string>
+        </property>
+        <property name="toolTip">
+         <string>Resign the current game as the local human player</string>
         </property>
        </widget>
       </item>

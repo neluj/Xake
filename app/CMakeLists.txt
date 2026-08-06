@@ -37,6 +37,8 @@ set(APP_SOURCES
     tournament_dialog.cpp
     tournament_dialog.h
     tournament_dialog.ui
+    tournament_schedule.cpp
+    tournament_schedule.h
     tournament_runner.cpp
     tournament_runner.h
     session_record.cpp

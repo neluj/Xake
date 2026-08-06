@@ -192,6 +192,13 @@ void MatchSettingsWidget::setConfig(const MatchConfig& config)
     applyOpeningFileSelection();
 }
 
+void MatchSettingsWidget::setPlayersVisible(bool visible)
+{
+    if (ui && ui->groupBoxPlayers) {
+        ui->groupBoxPlayers->setVisible(visible);
+    }
+}
+
 void MatchSettingsWidget::applyOpeningFileSelection()
 {
     if (!ui || !ui->useOpeningFileCheckBox || !ui->useStartPosCheckBox

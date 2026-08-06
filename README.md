@@ -12,17 +12,17 @@
   </p>
 </div>
 
-Xake 0.3.0 is a desktop chess GUI for playing games and running matches between
-UCI engines. It validates moves with its own legal move generator, manages chess
-clocks, loads opening suites, records sessions, replays saved games and
-tournaments, displays captured material, and shows engine communication for
-diagnosis.
+Xake 0.4.0 is a desktop chess GUI for playing games and running
+multi-participant tournaments with local humans and UCI engines. It validates
+moves with its own legal move generator, manages chess clocks, loads opening
+suites, records sessions, replays saved games and tournaments, displays
+captured material, and shows engine communication for diagnosis.
 
 ## Installation
 
 The supported binary package is Windows x86-64:
 
-1. Download the `Xake-0.3.0-Windows-*.zip` package.
+1. Download the `Xake-0.4.0-Windows-*.zip` package.
 2. Extract the complete archive to a writable directory.
 3. Run `bin/Xake.exe`.
 
@@ -56,7 +56,8 @@ deployment script, which uses `windeployqt` on Windows.
 
 ## UCI Engines
 
-Select an engine executable for either side in the game or tournament settings.
+Select an engine executable for either side in a game or for each engine
+participant in a tournament.
 Xake supports the standard UCI startup and search flow, including `uci`,
 `isready`, `ucinewgame`, `position`, timed `go`, `stop`, `quit`, and
 `bestmove`. Time controls and increments are sent to engines in milliseconds.
@@ -80,10 +81,24 @@ Invalid or ambiguous opening moves are rejected before a session starts.
 
 ## Tournaments
 
-The current tournament runner manages a two-participant engine match. It
-alternates colors between games, applies the selected clock and opening suite,
-tracks win/loss/draw statistics, estimates Elo difference, and exports an
-incremental report and PGN.
+A tournament can contain two or more UCI engines and local humans. Two formats
+are available:
+
+- **Round-robin** schedules every pair once per cycle.
+- **Gauntlet** schedules the selected main participant against every other
+  participant per cycle.
+
+Games per pairing controls color-reversed encounters inside each pairing. The
+scheduler balances colors across cycles and keeps paired opening games on the
+same opening entry. Xake tracks an independent W-L-D score, points, result
+sequence, color count, and estimated Elo difference for every participant.
+
+Before a tournament game involving a local human begins, Xake displays the
+players and colors and waits for confirmation, so neither clock starts early.
+A human can resign from the Game panel. If an engine fails, that game is
+recorded as a forfeit and the remaining tournament schedule continues.
+Tournament games are played sequentially and exported to an incremental JSON
+report and multi-game PGN.
 
 Pause stops the active search and resumes it with the remaining clock. Stop and
 restart require confirmation. Starting a new session can terminate the active
@@ -147,7 +162,7 @@ files are never deleted.
 
 The CTest suite covers FEN handling, legal move execution, move generation,
 perft positions, clocks and game termination, settings, openings, replay,
-tournament flow, session records, history, and widgets.
+tournament scheduling and flow, session records, history, and widgets.
 
 For release packaging and clean-environment checks, see
 [`docs/RELEASE_WINDOWS.md`](docs/RELEASE_WINDOWS.md).
@@ -155,8 +170,9 @@ For release packaging and clean-environment checks, see
 ## Known Limitations
 
 - The packaged release currently targets Windows x86-64 only.
-- Tournaments contain two participants; multi-engine pairing is not
-  implemented.
+- Tournament formats are limited to Round-robin and Gauntlet; Swiss,
+  knockout, team events, and simultaneous games are not implemented.
+- Human tournament participants are local and share the same computer.
 - UCI option discovery is displayed but there is no general engine-option
   editor. Hash is the only option configured directly.
 - Pondering, remote engines, engine protocols other than UCI, and engine

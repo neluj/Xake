@@ -26,6 +26,16 @@ struct HistoryGame {
     int openingMoveCount = 0;
 };
 
+struct HistoryStanding {
+    QString participantId;
+    QString name;
+    int wins = 0;
+    int losses = 0;
+    int draws = 0;
+    double points = 0.0;
+    QString sequence;
+};
+
 struct HistoryEntry {
     HistorySessionType type = HistorySessionType::Match;
     QString sessionTag;
@@ -37,6 +47,9 @@ struct HistoryEntry {
     QDateTime finishedAt;
     QString player1;
     QString player2;
+    QStringList participants;
+    QString tournamentFormat;
+    QString gauntletParticipantId;
     QString timeControl;
     int baseTimeSeconds = 0;
     int incrementSeconds = 0;
@@ -53,6 +66,7 @@ struct HistoryEntry {
     int player1Wins = 0;
     int player2Wins = 0;
     int draws = 0;
+    QVector<HistoryStanding> standings;
     QVector<HistoryGame> games;
 };
 
