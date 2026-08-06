@@ -13,6 +13,7 @@ class TestSessionRecord : public QObject
 
 private slots:
     void writesCompletedMatchState();
+    void writesTournamentParticipants();
 };
 
 void TestSessionRecord::writesCompletedMatchState()
@@ -85,6 +86,57 @@ void TestSessionRecord::writesCompletedMatchState()
              QStringLiteral("checkmate"));
     QCOMPARE(root.value(QStringLiteral("termination")).toString(),
              QStringLiteral("checkmate"));
+}
+
+void TestSessionRecord::writesTournamentParticipants()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+
+    SessionRecord record;
+    record.sessionType = QStringLiteral("tournament");
+    record.sessionTag = QStringLiteral("multi_participant");
+    record.hasTournament = true;
+    record.tournament.format = TournamentFormat::Gauntlet;
+    record.tournament.tournamentType = QStringLiteral("Gauntlet");
+    record.tournament.gauntletParticipantId =
+        QStringLiteral("human");
+    for (int index = 0; index < 3; ++index) {
+        PlayerConfig player;
+        player.type = PlayerType::Human;
+        player.name = QStringLiteral("Player %1").arg(index + 1);
+        record.tournament.participants.append({
+            index == 0
+                ? QStringLiteral("human")
+                : QStringLiteral("engine-%1").arg(index),
+            player
+        });
+    }
+    record.tournament.match.player1 =
+        record.tournament.participants.at(0).player;
+    record.tournament.match.player2 =
+        record.tournament.participants.at(1).player;
+
+    const QString path =
+        directory.filePath(QStringLiteral("tournament.json"));
+    QString error;
+    QVERIFY2(writeSessionRecord(record, path, &error),
+             qPrintable(error));
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QJsonObject root =
+        QJsonDocument::fromJson(file.readAll()).object();
+    QCOMPARE(root.value(QStringLiteral("formatVersion")).toInt(), 2);
+    const QJsonObject tournament =
+        root.value(QStringLiteral("tournament")).toObject();
+    QCOMPARE(tournament.value(QStringLiteral("format")).toString(),
+             QStringLiteral("gauntlet"));
+    QCOMPARE(tournament.value(
+                 QStringLiteral("gauntletParticipantId")).toString(),
+             QStringLiteral("human"));
+    QCOMPARE(tournament.value(
+                 QStringLiteral("participants")).toArray().size(), 3);
 }
 
 QTEST_APPLESS_MAIN(TestSessionRecord)

@@ -40,6 +40,8 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QSizePolicy>
+#include <QSplitter>
 #include <QString>
 #include <QStyle>
 #include <QSvgRenderer>
@@ -71,6 +73,7 @@ constexpr int kHistoryEntryRole = Qt::UserRole;
 constexpr int kHistoryGameRole = Qt::UserRole + 1;
 const char kHistoryHeaderStateKey[] = "ui/historyHeaderState";
 constexpr int kHistoryMinimumColumnWidth = 70;
+constexpr int kTournamentInfoColumns = 4;
 
 Qt::CaseSensitivity pathCaseSensitivity()
 {
@@ -197,6 +200,64 @@ void configureMoveList(QPlainTextEdit *editor)
     editor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     editor->setStyleSheet(
         QStringLiteral("QPlainTextEdit { background: transparent; border: none; padding: 0px; }"));
+}
+
+void configureTournamentInformation(QLabel *label)
+{
+    if (!label) {
+        return;
+    }
+
+    label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    label->setFixedHeight(label->fontMetrics().lineSpacing() * 2 + 30);
+    label->setTextFormat(Qt::RichText);
+    label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    label->setWordWrap(false);
+}
+
+QString tournamentInformationHtml(const QLabel *label,
+                                  const QStringList& titles,
+                                  const QStringList& values)
+{
+    if (!label || titles.size() != values.size() || titles.isEmpty()) {
+        return QString();
+    }
+
+    const QString borderColor =
+        label->palette().color(QPalette::Mid).name();
+    QString html = QStringLiteral(
+        "<table width=\"100%\" cellspacing=\"3\" cellpadding=\"0\">");
+    for (qsizetype index = 0; index < titles.size(); ++index) {
+        if ((index % kTournamentInfoColumns) == 0) {
+            html += QStringLiteral("<tr>");
+        }
+        html += QStringLiteral(
+                    "<td width=\"25%\" style=\"border: 1px solid %1; "
+                    "padding: 3px 5px; white-space: nowrap;\">"
+                    "<b>%2:</b> %3</td>")
+                    .arg(borderColor,
+                         titles.at(index).toHtmlEscaped(),
+                         values.at(index).toHtmlEscaped());
+        if ((index % kTournamentInfoColumns)
+                == kTournamentInfoColumns - 1
+            || index == titles.size() - 1) {
+            html += QStringLiteral("</tr>");
+        }
+    }
+    html += QStringLiteral("</table>");
+    return html;
+}
+
+void configureTournamentSummary(QPlainTextEdit *editor)
+{
+    configureMoveList(editor);
+    if (!editor) {
+        return;
+    }
+
+    editor->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    editor->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    editor->document()->setDocumentMargin(2.0);
 }
 
 void configureColumnMoveList(QPlainTextEdit *editor)
@@ -456,6 +517,7 @@ QString historyEntrySearchText(const HistoryEntry& entry)
         entry.termination,
         entry.openingName
     };
+    values.append(entry.participants);
     return values.join(QLatin1Char(' ')).toLower();
 }
 
@@ -534,21 +596,47 @@ void renderHistoryDetails(QPlainTextEdit *editor,
         }
     } else if (entry.type == HistorySessionType::Tournament) {
         cursor.insertText(QObject::tr("TOURNAMENT"), titleFormat);
-        cursor.insertText(QStringLiteral("\n%1 - %2")
-                              .arg(entry.player1, entry.player2));
+        cursor.insertText(
+            QStringLiteral("\n%1")
+                .arg(entry.participants.join(QStringLiteral(", "))));
         section(QObject::tr("Summary"));
         field(QObject::tr("Date"), historyDate(entry.startedAt));
         field(QObject::tr("Status"), readableHistoryValue(entry.status));
+        field(QObject::tr("Format"), entry.tournamentFormat);
+        field(QObject::tr("Participants"),
+              entry.participants.join(QStringLiteral(", ")));
         field(QObject::tr("Time"), historyTimeControl(entry));
         field(QObject::tr("Games"),
               QStringLiteral("%1/%2")
                   .arg(entry.completedGames)
                   .arg(entry.totalGames));
-        field(QObject::tr("W-L-D"),
-              QStringLiteral("%1-%2-%3")
-                  .arg(entry.player1Wins)
-                  .arg(entry.player2Wins)
-                  .arg(entry.draws));
+        if (!entry.standings.isEmpty()) {
+            section(QObject::tr("Standings"));
+            QVector<HistoryStanding> standings = entry.standings;
+            std::sort(
+                standings.begin(), standings.end(),
+                [](const HistoryStanding& left,
+                   const HistoryStanding& right) {
+                if (left.points != right.points) {
+                    return left.points > right.points;
+                }
+                if (left.wins != right.wins) {
+                    return left.wins > right.wins;
+                }
+                return left.name.compare(
+                    right.name, Qt::CaseInsensitive) < 0;
+            });
+            for (const HistoryStanding& standing : standings) {
+                cursor.insertText(
+                    QStringLiteral("%1: %2  W-L-D %3-%4-%5\n")
+                        .arg(standing.name)
+                        .arg(QLocale::system().toString(
+                            standing.points, 'f', 1))
+                        .arg(standing.wins)
+                        .arg(standing.losses)
+                        .arg(standing.draws));
+            }
+        }
         if (!entry.games.isEmpty()) {
             section(QObject::tr("Games"));
             for (const HistoryGame& item : entry.games) {
@@ -628,65 +716,25 @@ QString playerDisplayName(const PlayerConfig& player, const QString& fallback)
     return engineName.isEmpty() ? fallback : engineName;
 }
 
-struct PlayerStanding {
-    QString name;
-    int wins = 0;
-    int losses = 0;
-    int draws = 0;
-    QString sequence;
-
-    int games() const
-    {
-        return wins + losses + draws;
-    }
-
-    double points() const
-    {
-        return wins + draws * 0.5;
-    }
-};
-
-QPair<PlayerStanding, PlayerStanding> tournamentStandings(
-    const TournamentConfig& config,
-    const QVector<TournamentGameRecord>& games)
+QVector<TournamentStanding> sortedStandings(
+    const TournamentSummary& summary)
 {
-    PlayerStanding player1;
-    player1.name = playerDisplayName(config.match.player1, QObject::tr("Player 1"));
-    PlayerStanding player2;
-    player2.name = playerDisplayName(config.match.player2, QObject::tr("Player 2"));
-
-    for (const TournamentGameRecord& game : games) {
-        if (!game.completed) {
-            continue;
+    QVector<TournamentStanding> standings = summary.standings;
+    std::sort(standings.begin(), standings.end(),
+              [](const TournamentStanding& left,
+                 const TournamentStanding& right) {
+        if (left.points() != right.points()) {
+            return left.points() > right.points();
         }
-        if (game.result.outcome == GameOutcome::Draw) {
-            ++player1.draws;
-            ++player2.draws;
-            player1.sequence += '=';
-            player2.sequence += '=';
-            continue;
+        if (left.wins != right.wins) {
+            return left.wins > right.wins;
         }
-
-        const bool player1Won =
-            (game.result.outcome == GameOutcome::WhiteWin && !game.colorsSwapped)
-            || (game.result.outcome == GameOutcome::BlackWin && game.colorsSwapped);
-        if (player1Won) {
-            ++player1.wins;
-            ++player2.losses;
-            player1.sequence += '1';
-            player2.sequence += '0';
-        } else {
-            ++player1.losses;
-            ++player2.wins;
-            player1.sequence += '0';
-            player2.sequence += '1';
-        }
-    }
-
-    return qMakePair(player1, player2);
+        return left.name.compare(right.name, Qt::CaseInsensitive) < 0;
+    });
+    return standings;
 }
 
-int performanceEloDifference(const PlayerStanding& standing)
+int performanceEloDifference(const TournamentStanding& standing)
 {
     if (standing.games() == 0) {
         return 0;
@@ -715,7 +763,8 @@ QString signedNumber(int value)
                      : QString::number(value);
 }
 
-QString standingBlock(const PlayerStanding& standing, const PlayerStanding& opponent)
+QString standingBlock(const TournamentStanding& standing,
+                      const QString& opponentName)
 {
     const int percentage = standing.games() == 0
         ? 0
@@ -727,7 +776,7 @@ QString standingBlock(const PlayerStanding& standing, const PlayerStanding& oppo
     return QStringLiteral("----------------- %1 -----------------\n"
                           "%1 - %2 : %3/%4  W-L-D %5-%6-%7  (%8)  %9%  %10")
         .arg(standing.name)
-        .arg(opponent.name)
+        .arg(opponentName)
         .arg(formattedPoints(standing.points()))
         .arg(standing.games())
         .arg(standing.wins)
@@ -738,33 +787,37 @@ QString standingBlock(const PlayerStanding& standing, const PlayerStanding& oppo
         .arg(signedNumber(performanceEloDifference(standing)));
 }
 
-QString tournamentStandingsText(const TournamentConfig& config,
-                                const QVector<TournamentGameRecord>& games)
+QString tournamentStandingsText(const TournamentSummary& summary)
 {
-    const auto standings = tournamentStandings(config, games);
-    return standingBlock(standings.first, standings.second)
-        + QStringLiteral("\n\n")
-        + standingBlock(standings.second, standings.first);
+    const QVector<TournamentStanding> standings =
+        sortedStandings(summary);
+    QStringList blocks;
+    for (qsizetype index = 0; index < standings.size(); ++index) {
+        const QString opponent =
+            standings.size() == 2
+            ? standings.at(index == 0 ? 1 : 0).name
+            : QObject::tr("Field");
+        blocks.append(standingBlock(standings.at(index), opponent));
+    }
+    return blocks.join(QStringLiteral("\n\n"));
 }
 
-QString compactTournamentResult(const TournamentConfig& config,
-                                const QVector<TournamentGameRecord>& games)
+QString compactTournamentResult(const TournamentSummary& summary)
 {
-    const auto standings = tournamentStandings(config, games);
-    return QStringLiteral("%1: %2/%3 (W-L-D %4-%5-%6)\n"
-                          "%7: %8/%9 (W-L-D %10-%11-%12)")
-        .arg(standings.first.name)
-        .arg(formattedPoints(standings.first.points()))
-        .arg(standings.first.games())
-        .arg(standings.first.wins)
-        .arg(standings.first.losses)
-        .arg(standings.first.draws)
-        .arg(standings.second.name)
-        .arg(formattedPoints(standings.second.points()))
-        .arg(standings.second.games())
-        .arg(standings.second.wins)
-        .arg(standings.second.losses)
-        .arg(standings.second.draws);
+    const QVector<TournamentStanding> standings =
+        sortedStandings(summary);
+    QStringList lines;
+    for (const TournamentStanding& standing : standings) {
+        lines.append(
+            QStringLiteral("%1: %2/%3 (W-L-D %4-%5-%6)")
+                .arg(standing.name)
+                .arg(formattedPoints(standing.points()))
+                .arg(standing.games())
+                .arg(standing.wins)
+                .arg(standing.losses)
+                .arg(standing.draws));
+    }
+    return lines.join(QLatin1Char('\n'));
 }
 
 void renderTournamentHistory(QPlainTextEdit *editor,
@@ -806,8 +859,9 @@ void renderTournamentHistory(QPlainTextEdit *editor,
         const QString blackName =
             playerDisplayName(game.match.player2, QObject::tr("Player"));
         cursor.insertText(
-            QStringLiteral("GAME %1  |  %2 - %3 : %4")
+            QStringLiteral("GAME %1  |  ROUND %2  |  %3 - %4 : %5")
                 .arg(game.gameNumber, 3)
+                .arg(game.roundNumber)
                 .arg(whiteName)
                 .arg(blackName)
                 .arg(status),
@@ -907,12 +961,20 @@ MainWindow::MainWindow(QWidget *parent)
 {
     // Build the widget tree from the .ui description.
     ui->setupUi(this);
+    m_tournamentRunner->setHumanGameConfirmationEnabled(true);
     QSettings settings;
     m_state = loadAppState(settings);
     setColorIndicator(ui->labelWhiteTime, WHITE);
     setColorIndicator(ui->labelBlackTime, BLACK);
     configureColumnMoveList(ui->gameMovesText);
+    configureTournamentInformation(ui->labelTournamentInfo);
+    configureTournamentSummary(ui->tournamentStandingsText);
     configureMoveList(ui->tournamentHistoryText);
+    ui->tournamentContentSplitter->setChildrenCollapsible(false);
+    ui->tournamentContentSplitter->setHandleWidth(6);
+    ui->tournamentContentSplitter->setStretchFactor(0, 1);
+    ui->tournamentContentSplitter->setStretchFactor(1, 1);
+    ui->tournamentContentSplitter->setSizes({1, 1});
     configureMoveList(ui->historyDetailsText);
     configureMoveLegend(ui->labelGameMoveLegend);
     configureMoveLegend(ui->labelTournamentMoveLegend);
@@ -923,6 +985,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->historySplitter->setStretchFactor(0, 3);
     ui->historySplitter->setStretchFactor(1, 4);
     ui->pauseButton->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
+    ui->resignButton->setIcon(
+        style()->standardIcon(QStyle::SP_DialogCancelButton));
     ui->stopButton->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
     ui->restartButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
     ui->replayFirstButton->setIcon(
@@ -953,6 +1017,8 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(ui->pauseButton, &QPushButton::clicked,
             this, &MainWindow::togglePause);
+    connect(ui->resignButton, &QPushButton::clicked,
+            this, &MainWindow::resignCurrentGame);
     connect(ui->stopButton, &QPushButton::clicked,
             this, &MainWindow::stopCurrentSession);
     connect(ui->restartButton, &QPushButton::clicked,
@@ -1186,7 +1252,28 @@ MainWindow::MainWindow(QWidget *parent)
             [this](const QString& title, const QString& message) {
         const bool isNormalGameResult = title == tr("Checkmate")
             || title == tr("Draw")
-            || title == tr("Time");
+            || title == tr("Time")
+            || title == tr("Resignation");
+        if (m_tournamentRunner
+            && m_tournamentRunner->isActive()
+            && title == tr("Engine error")) {
+            const bool resumeAfterMessage =
+                !m_tournamentRunner->isPaused()
+                && m_tournamentRunner->pause();
+            QMessageBox::warning(this, title, message);
+            if (resumeAfterMessage) {
+                QMetaObject::invokeMethod(
+                    m_tournamentRunner,
+                    [this]() {
+                    if (m_tournamentRunner->isActive()
+                        && m_tournamentRunner->isPaused()) {
+                        m_tournamentRunner->resume();
+                    }
+                },
+                    Qt::QueuedConnection);
+            }
+            return;
+        }
         if (m_tournamentRunner && m_tournamentRunner->isActive() && isNormalGameResult) {
             if (ui && ui->statusbar) {
                 ui->statusbar->showMessage(message);
@@ -1207,6 +1294,20 @@ MainWindow::MainWindow(QWidget *parent)
             [this](GameTermination termination,
                    const QString& title,
                    const QString& message) {
+        if (termination == GameTermination::EngineFailure
+            && m_tournamentRunner
+            && m_tournamentRunner->isActive()) {
+            const QVector<TournamentGameRecord> records =
+                m_tournamentRunner->gameRecords();
+            if (!records.isEmpty() && records.constLast().completed) {
+                const GameResult& result =
+                    records.constLast().result;
+                showGameResult(gameResultNotation(result.outcome),
+                               gameTerminationKey(result.termination),
+                               result.message);
+                return;
+            }
+        }
         showGameResult(QStringLiteral("*"),
                        gameTerminationKey(termination),
                        message);
@@ -1254,6 +1355,49 @@ MainWindow::MainWindow(QWidget *parent)
         updateTournamentHistory();
     });
 
+    connect(m_tournamentRunner,
+            &TournamentRunner::humanGameReadyRequested,
+            this,
+            [this](int gameNumber,
+                   int totalGames,
+                   const MatchConfig& match) {
+        if (!m_tournamentRunner->isWaitingForHumanGame()) {
+            return;
+        }
+        if (ui && ui->labelTournamentStatus) {
+            ui->labelTournamentStatus->setText(
+                tr("Waiting to start game %1 of %2")
+                    .arg(gameNumber)
+                    .arg(totalGames));
+        }
+
+        QMessageBox ready(
+            QMessageBox::Information,
+            tr("Tournament game ready"),
+            tr("Game %1 of %2 is ready.\n\n"
+               "White: %3\nBlack: %4")
+                .arg(gameNumber)
+                .arg(totalGames)
+                .arg(playerDisplayName(match.player1, tr("White")))
+                .arg(playerDisplayName(match.player2, tr("Black"))),
+            QMessageBox::NoButton,
+            this);
+        QPushButton *startButton = ready.addButton(
+            tr("Start game"), QMessageBox::AcceptRole);
+        QPushButton *stopButton = ready.addButton(
+            tr("Stop tournament"), QMessageBox::RejectRole);
+        ready.setDefaultButton(startButton);
+        ready.setEscapeButton(stopButton);
+        ready.exec();
+
+        if (ready.clickedButton() == startButton) {
+            m_tournamentRunner->startPendingHumanGame();
+        } else {
+            m_tournamentRunner->stop();
+        }
+        updateSessionControls();
+    });
+
     connect(m_tournamentRunner, &TournamentRunner::tournamentGameFinished, this,
             [this](int, const GameResult&) {
         updateTournamentHistory();
@@ -1263,10 +1407,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_tournamentRunner, &TournamentRunner::tournamentFinished, this,
             [this](const TournamentSummary& summary) {
-        const QString message = tr("Tournament finished after %1 games.\nResult: %2")
+        const QString message = tr(
+            "Tournament finished after %1 games.\nResult:\n%2")
             .arg(summary.completedGames)
-            .arg(compactTournamentResult(m_state.lastTournament,
-                                         m_tournamentRunner->gameRecords()));
+            .arg(compactTournamentResult(summary));
         if (ui && ui->labelTournamentStatus) {
             ui->labelTournamentStatus->setText(tr("Tournament finished"));
         }
@@ -1627,6 +1771,37 @@ void MainWindow::stopCurrentSession()
     }
 }
 
+void MainWindow::resignCurrentGame()
+{
+    if (!m_gameController || !m_gameController->canHumanResign()) {
+        return;
+    }
+
+    const MatchConfig match = m_gameController->matchConfig();
+    const bool whiteIsHuman =
+        match.player1.type == PlayerType::Human;
+    const bool blackIsHuman =
+        match.player2.type == PlayerType::Human;
+    const bool resignWhite =
+        whiteIsHuman != blackIsHuman
+        ? whiteIsHuman
+        : m_gameController->currentPosition().get_side_to_move() == WHITE;
+    const QString playerName =
+        playerDisplayName(
+            resignWhite ? match.player1 : match.player2,
+            resignWhite ? tr("White") : tr("Black"));
+
+    const QMessageBox::StandardButton answer = QMessageBox::question(
+        this,
+        tr("Resign game"),
+        tr("Should %1 resign the current game?").arg(playerName),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    if (answer == QMessageBox::Yes) {
+        m_gameController->resignHumanPlayer();
+    }
+}
+
 void MainWindow::restartLastSession()
 {
     const SessionKind sessionKind = m_lastSessionKind;
@@ -1664,7 +1839,8 @@ void MainWindow::restartLastSession()
 
 void MainWindow::updateSessionControls()
 {
-    if (!ui || !ui->pauseButton || !ui->stopButton || !ui->restartButton) {
+    if (!ui || !ui->pauseButton || !ui->resignButton
+        || !ui->stopButton || !ui->restartButton) {
         return;
     }
 
@@ -1681,6 +1857,8 @@ void MainWindow::updateSessionControls()
     ui->pauseButton->setIcon(
         style()->standardIcon(paused ? QStyle::SP_MediaPlay
                                     : QStyle::SP_MediaPause));
+    ui->resignButton->setEnabled(
+        gameActive && m_gameController->canHumanResign());
     ui->stopButton->setEnabled(active);
     ui->restartButton->setEnabled(m_lastSessionKind != SessionKind::None);
     if (ui->actionManageApplicationData) {
@@ -1716,6 +1894,7 @@ void MainWindow::clearTournamentPanel()
     }
     if (ui->labelTournamentInfo) {
         ui->labelTournamentInfo->clear();
+        ui->labelTournamentInfo->setToolTip(QString());
     }
     if (ui->tournamentStandingsText) {
         ui->tournamentStandingsText->clear();
@@ -1783,18 +1962,43 @@ void MainWindow::resetTournamentPanel(int totalGames)
                   .arg(QFileInfo(config.match.game.openingFilePath).fileName())
                   .arg(m_tournamentRunner->openingCount())
             : tr("Configured start position");
+        const QString timeInfo = tr("%1 %2+%3")
+            .arg(config.match.game.timeControl)
+            .arg(config.match.game.baseTimeSeconds)
+            .arg(config.match.game.incrementSeconds);
+        const QString compactOpeningInfo =
+            config.match.game.useOpeningFile
+            ? tr("%1 positions").arg(m_tournamentRunner->openingCount())
+            : tr("Start position");
+        const QString compactReportInfo = reportName.isEmpty()
+            ? tr("Not available")
+            : tr("JSON + PGN");
+        const QStringList titles{
+            tr("Format"), tr("Participants"), tr("Cycles"),
+            tr("Games/pairing"), tr("Total games"), tr("Clock"),
+            tr("Openings"), tr("Files")
+        };
+        const QStringList values{
+            config.tournamentType,
+            QString::number(config.participants.size()),
+            QString::number(config.rounds),
+            QString::number(config.gamesPerPairing),
+            QString::number(totalGames), timeInfo,
+            compactOpeningInfo, compactReportInfo
+        };
         ui->labelTournamentInfo->setText(
-            tr("Type: %1\nFormat: %2 rounds x %3 games (%4 total)\n"
-               "Time: %5 %6+%7\nOpenings: %8\nReport: %9")
+            tournamentInformationHtml(ui->labelTournamentInfo,
+                                      titles, values));
+        ui->labelTournamentInfo->setToolTip(
+            tr("Format: %1\nParticipants: %2\nCycles: %3\n"
+               "Games per pairing: %4\nTotal games: %5\n"
+               "Time: %6\nOpenings: %7\nReport: %8")
                 .arg(config.tournamentType)
+                .arg(config.participants.size())
                 .arg(config.rounds)
                 .arg(config.gamesPerPairing)
                 .arg(totalGames)
-                .arg(config.match.game.timeControl)
-                .arg(config.match.game.baseTimeSeconds)
-                .arg(config.match.game.incrementSeconds)
-                .arg(openingInfo)
-                .arg(reportName));
+                .arg(timeInfo, openingInfo, reportName));
     }
     if (ui->tournamentHistoryText) {
         ui->tournamentHistoryText->clear();
@@ -1808,9 +2012,8 @@ void MainWindow::updateTournamentStandings()
         return;
     }
 
-    ui->tournamentStandingsText->setText(
-        tournamentStandingsText(m_state.lastTournament,
-                                m_tournamentRunner->gameRecords()));
+    ui->tournamentStandingsText->setPlainText(
+        tournamentStandingsText(m_tournamentRunner->summary()));
 }
 
 void MainWindow::updateTournamentHistory()
@@ -1990,10 +2193,9 @@ void MainWindow::populateHistoryTree()
             : tr("Game");
         const QString result =
             entry.type == HistorySessionType::Tournament
-            ? tr("W-L-D %1-%2-%3")
-                  .arg(entry.player1Wins)
-                  .arg(entry.player2Wins)
-                  .arg(entry.draws)
+            ? tr("%1/%2 games")
+                  .arg(entry.completedGames)
+                  .arg(entry.totalGames)
             : gameResultSummary(
                   entry.result.isEmpty()
                       ? readableHistoryValue(entry.status)
@@ -2002,8 +2204,13 @@ void MainWindow::populateHistoryTree()
         auto *top = new QTreeWidgetItem(ui->historyTree);
         top->setText(0, historyDate(entry.startedAt));
         top->setText(1, type);
-        top->setText(2, QStringLiteral("%1 - %2")
-                            .arg(entry.player1, entry.player2));
+        const QString participants =
+            entry.type == HistorySessionType::Tournament
+            ? entry.participants.join(QStringLiteral(", "))
+            : QStringLiteral("%1 - %2")
+                  .arg(entry.player1, entry.player2);
+        top->setText(2, participants);
+        top->setToolTip(2, participants);
         top->setText(3, result);
         top->setData(0, kHistoryEntryRole, entryIndex);
         top->setData(0, kHistoryGameRole, -1);

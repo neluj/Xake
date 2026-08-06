@@ -60,7 +60,7 @@ jobs:
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: Xake-0.3.0-Windows-AMD64
+          name: Xake-0.4.0-Windows-AMD64
           path: |
             build/Xake-*.zip
             build/Xake-*.zip.sha256

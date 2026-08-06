@@ -50,6 +50,69 @@ QString playerName(const QJsonValue& value)
     return executableName.isEmpty() ? QStringLiteral("Unknown") : executableName;
 }
 
+void parseTournamentParticipants(const QJsonObject& tournament,
+                                 HistoryEntry& entry)
+{
+    const QJsonArray participants =
+        tournament.value(QStringLiteral("participants")).toArray();
+    for (const QJsonValue& value : participants) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject participant = value.toObject();
+        const QJsonValue player =
+            participant.contains(QStringLiteral("player"))
+            ? participant.value(QStringLiteral("player"))
+            : value;
+        entry.participants.append(playerName(player));
+    }
+
+    if (entry.participants.isEmpty()) {
+        entry.participants = {
+            playerName(tournament.value(QStringLiteral("player1"))),
+            playerName(tournament.value(QStringLiteral("player2")))
+        };
+    }
+    entry.player1 = entry.participants.value(
+        0, QStringLiteral("Unknown"));
+    entry.player2 = entry.participants.value(
+        1, QStringLiteral("Unknown"));
+
+    const QString format =
+        tournament.value(QStringLiteral("format")).toString();
+    const QString legacyType =
+        tournament.value(QStringLiteral("type")).toString(
+            tournament.value(
+                QStringLiteral("tournamentType")).toString());
+    entry.tournamentFormat =
+        format.compare(QStringLiteral("gauntlet"),
+                       Qt::CaseInsensitive) == 0
+        || legacyType.compare(QStringLiteral("Gauntlet"),
+                              Qt::CaseInsensitive) == 0
+        ? QStringLiteral("Gauntlet")
+        : QStringLiteral("Round-robin");
+    entry.gauntletParticipantId =
+        tournament.value(
+            QStringLiteral("gauntletParticipantId")).toString();
+}
+
+HistoryStanding parseStanding(const QJsonObject& object)
+{
+    HistoryStanding standing;
+    standing.participantId =
+        object.value(QStringLiteral("participantId")).toString();
+    standing.name =
+        object.value(QStringLiteral("name")).toString();
+    standing.wins = object.value(QStringLiteral("wins")).toInt();
+    standing.losses = object.value(QStringLiteral("losses")).toInt();
+    standing.draws = object.value(QStringLiteral("draws")).toInt();
+    standing.points = object.value(QStringLiteral("points")).toDouble(
+        standing.wins + standing.draws * 0.5);
+    standing.sequence =
+        object.value(QStringLiteral("sequence")).toString();
+    return standing;
+}
+
 void parseGameSettings(const QJsonObject& game, HistoryEntry& entry)
 {
     entry.timeControl = game.value(QStringLiteral("timeControl")).toString();
@@ -196,8 +259,7 @@ HistoryEntry parseTournamentReport(const QJsonObject& root,
 
     const QJsonObject tournament =
         root.value(QStringLiteral("tournament")).toObject();
-    entry.player1 = playerName(tournament.value(QStringLiteral("player1")));
-    entry.player2 = playerName(tournament.value(QStringLiteral("player2")));
+    parseTournamentParticipants(tournament, entry);
     parseGameSettings(tournament.value(QStringLiteral("game")).toObject(), entry);
 
     const QJsonObject summary = root.value(QStringLiteral("summary")).toObject();
@@ -207,6 +269,29 @@ HistoryEntry parseTournamentReport(const QJsonObject& root,
     entry.player1Wins = summary.value(QStringLiteral("player1Wins")).toInt();
     entry.player2Wins = summary.value(QStringLiteral("player2Wins")).toInt();
     entry.draws = summary.value(QStringLiteral("draws")).toInt();
+    const QJsonArray standings =
+        summary.value(QStringLiteral("standings")).toArray();
+    for (const QJsonValue& value : standings) {
+        if (value.isObject()) {
+            entry.standings.append(
+                parseStanding(value.toObject()));
+        }
+    }
+    if (entry.standings.isEmpty()
+        && entry.participants.size() >= 2) {
+        entry.standings = {
+            {QString(), entry.player1,
+             entry.player1Wins, entry.player2Wins,
+             entry.draws,
+             entry.player1Wins + entry.draws * 0.5,
+             QString()},
+            {QString(), entry.player2,
+             entry.player2Wins, entry.player1Wins,
+             entry.draws,
+             entry.player2Wins + entry.draws * 0.5,
+             QString()}
+        };
+    }
 
     const QJsonArray games = root.value(QStringLiteral("games")).toArray();
     entry.games.reserve(games.size());
@@ -241,11 +326,26 @@ HistoryEntry parseTournamentSession(const QJsonObject& root,
     const QJsonObject tournament =
         root.value(QStringLiteral("tournament")).toObject();
     const QJsonObject match = tournament.value(QStringLiteral("match")).toObject();
-    entry.player1 = playerName(match.value(QStringLiteral("player1")));
-    entry.player2 = playerName(match.value(QStringLiteral("player2")));
+    parseTournamentParticipants(tournament, entry);
+    if (tournament.value(QStringLiteral("participants"))
+            .toArray().isEmpty()) {
+        entry.participants = {
+            playerName(match.value(QStringLiteral("player1"))),
+            playerName(match.value(QStringLiteral("player2")))
+        };
+        entry.player1 = entry.participants.at(0);
+        entry.player2 = entry.participants.at(1);
+    }
     parseGameSettings(match.value(QStringLiteral("game")).toObject(), entry);
-    entry.totalGames = tournament.value(QStringLiteral("rounds")).toInt()
-        * tournament.value(QStringLiteral("gamesPerPairing")).toInt();
+    const int participantCount = entry.participants.size();
+    const int pairingCount =
+        entry.tournamentFormat == QStringLiteral("Gauntlet")
+        ? qMax(0, participantCount - 1)
+        : participantCount * qMax(0, participantCount - 1) / 2;
+    entry.totalGames =
+        tournament.value(QStringLiteral("rounds")).toInt()
+        * tournament.value(QStringLiteral("gamesPerPairing")).toInt()
+        * pairingCount;
 
     const QString pgnPath =
         QDir(directoryPath).filePath(QStringLiteral("tournament.pgn"));

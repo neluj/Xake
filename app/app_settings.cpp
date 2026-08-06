@@ -4,7 +4,7 @@
 
 namespace {
 
-constexpr int kSettingsSchemaVersion = 2;
+constexpr int kSettingsSchemaVersion = 3;
 
 void writePlayer(QSettings& settings,
                  const QString& group,
@@ -85,6 +85,52 @@ MatchConfig readMatch(QSettings& settings)
     return match;
 }
 
+void writeTournamentParticipants(
+    QSettings& settings,
+    const QVector<TournamentParticipant>& participants)
+{
+    settings.beginWriteArray(QStringLiteral("participants"),
+                             participants.size());
+    for (qsizetype index = 0; index < participants.size(); ++index) {
+        settings.setArrayIndex(index);
+        settings.setValue(QStringLiteral("id"),
+                          participants.at(index).id);
+        writePlayer(settings,
+                    QStringLiteral("player"),
+                    participants.at(index).player);
+    }
+    settings.endArray();
+}
+
+QVector<TournamentParticipant> readTournamentParticipants(
+    QSettings& settings)
+{
+    QVector<TournamentParticipant> participants;
+    const int size =
+        settings.beginReadArray(QStringLiteral("participants"));
+    participants.reserve(size);
+    for (int index = 0; index < size; ++index) {
+        settings.setArrayIndex(index);
+        participants.append({
+            settings.value(QStringLiteral("id")).toString(),
+            readPlayer(settings, QStringLiteral("player"))
+        });
+    }
+    settings.endArray();
+    return participants;
+}
+
+TournamentFormat tournamentFormatFromSettings(
+    const QString& value)
+{
+    return value.compare(QStringLiteral("gauntlet"),
+                         Qt::CaseInsensitive) == 0
+        || value.compare(QStringLiteral("Gauntlet"),
+                         Qt::CaseInsensitive) == 0
+        ? TournamentFormat::Gauntlet
+        : TournamentFormat::RoundRobin;
+}
+
 }
 
 AppState loadAppState(QSettings& settings)
@@ -103,14 +149,37 @@ AppState loadAppState(QSettings& settings)
         settings.value(QStringLiteral("available"), false).toBool();
     if (state.hasLastTournament) {
         state.lastTournament.match = readMatch(settings);
+        state.lastTournament.participants =
+            readTournamentParticipants(settings);
         state.lastTournament.tournamentType =
             settings.value(QStringLiteral("tournamentType")).toString();
+        state.lastTournament.format = tournamentFormatFromSettings(
+            settings.value(
+                QStringLiteral("format"),
+                state.lastTournament.tournamentType).toString());
+        state.lastTournament.gauntletParticipantId =
+            settings.value(
+                QStringLiteral("gauntletParticipantId")).toString();
         state.lastTournament.rounds =
-            settings.value(QStringLiteral("rounds")).toInt();
+            settings.value(QStringLiteral("rounds"), 1).toInt();
         state.lastTournament.gamesPerPairing =
-            settings.value(QStringLiteral("gamesPerPairing")).toInt();
+            settings.value(
+                QStringLiteral("gamesPerPairing"), 2).toInt();
         state.lastTournament.maxMoves =
             settings.value(QStringLiteral("maxMoves")).toInt();
+        if (state.lastTournament.participants.isEmpty()) {
+            state.lastTournament.participants = {
+                {QStringLiteral("participant-1"),
+                 state.lastTournament.match.player1},
+                {QStringLiteral("participant-2"),
+                 state.lastTournament.match.player2}
+            };
+        }
+        if (state.lastTournament.gauntletParticipantId.isEmpty()
+            && !state.lastTournament.participants.isEmpty()) {
+            state.lastTournament.gauntletParticipantId =
+                state.lastTournament.participants.first().id;
+        }
     }
     settings.endGroup();
     return state;
@@ -135,9 +204,23 @@ void saveLastTournament(QSettings& settings, const TournamentConfig& config)
     settings.beginGroup(QStringLiteral("lastTournament"));
     settings.remove(QString());
     settings.setValue(QStringLiteral("available"), true);
-    writeMatch(settings, config.match);
+    MatchConfig legacyMatch = config.match;
+    if (config.participants.size() >= 2) {
+        legacyMatch.player1 = config.participants.at(0).player;
+        legacyMatch.player2 = config.participants.at(1).player;
+    }
+    writeMatch(settings, legacyMatch);
+    writeTournamentParticipants(settings, config.participants);
     settings.setValue(QStringLiteral("tournamentType"),
-                      config.tournamentType);
+                      config.format == TournamentFormat::Gauntlet
+                          ? QStringLiteral("Gauntlet")
+                          : QStringLiteral("Round-robin"));
+    settings.setValue(QStringLiteral("format"),
+                      config.format == TournamentFormat::Gauntlet
+                          ? QStringLiteral("gauntlet")
+                          : QStringLiteral("round_robin"));
+    settings.setValue(QStringLiteral("gauntletParticipantId"),
+                      config.gauntletParticipantId);
     settings.setValue(QStringLiteral("rounds"), config.rounds);
     settings.setValue(QStringLiteral("gamesPerPairing"),
                       config.gamesPerPairing);

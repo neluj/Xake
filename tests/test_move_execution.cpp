@@ -142,6 +142,7 @@ private slots:
     void controllerAnnouncesEachEngineSearch();
     void controllerStartsAfterOpeningMoves();
     void controllerPauseFreezesClockAndRejectsMoves();
+    void controllerAllowsHumanResignation();
     void controllerDiscardsBestMoveFromPausedSearch();
 
 private:
@@ -980,6 +981,25 @@ void TestMoveExecution::controllerPauseFreezesClockAndRejectsMoves()
     QTest::qWait(30);
     QVERIFY(controller.remainingTimeMs(WHITE) < pausedTime);
     QCOMPARE(pauseSpy.count(), 2);
+}
+
+void TestMoveExecution::controllerAllowsHumanResignation()
+{
+    GameController controller;
+    QSignalSpy finishedSpy(&controller, &GameController::gameFinished);
+    QVERIFY(controller.startMatch(
+        humanVsHumanConfig(QString::fromLatin1(kStartFen)),
+        kStartFen));
+
+    QVERIFY(controller.canHumanResign());
+    QVERIFY(controller.resignHumanPlayer());
+    QCOMPARE(finishedSpy.count(), 1);
+
+    const GameResult result =
+        finishedSpy.takeFirst().at(0).value<GameResult>();
+    QCOMPARE(result.outcome, GameOutcome::BlackWin);
+    QCOMPARE(result.termination, GameTermination::Resignation);
+    QVERIFY(!controller.isActive());
 }
 
 void TestMoveExecution::controllerDiscardsBestMoveFromPausedSearch()

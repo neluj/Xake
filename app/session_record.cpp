@@ -45,10 +45,26 @@ QJsonObject tournamentToJson(const TournamentConfig& tournament)
 {
     QJsonObject obj;
     obj["tournamentType"] = tournament.tournamentType;
+    obj["format"] =
+        tournament.format == TournamentFormat::Gauntlet
+        ? QStringLiteral("gauntlet")
+        : QStringLiteral("round_robin");
+    obj["gauntletParticipantId"] =
+        tournament.gauntletParticipantId;
     obj["rounds"] = tournament.rounds;
     obj["gamesPerPairing"] = tournament.gamesPerPairing;
     obj["maxMoves"] = tournament.maxMoves;
     obj["match"] = matchToJson(tournament.match);
+    QJsonArray participants;
+    for (const TournamentParticipant& participant :
+         tournament.participants) {
+        QJsonObject participantObject;
+        participantObject["id"] = participant.id;
+        participantObject["player"] =
+            playerToJson(participant.player);
+        participants.append(participantObject);
+    }
+    obj["participants"] = participants;
     return obj;
 }
 
@@ -72,6 +88,7 @@ bool writeSessionRecord(const SessionRecord& record,
     }
 
     QJsonObject root;
+    root["formatVersion"] = 2;
     root["sessionType"] = record.sessionType;
     root["sessionTag"] = record.sessionTag;
     root["startTime"] = record.startTimeIso;

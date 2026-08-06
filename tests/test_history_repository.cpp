@@ -76,6 +76,12 @@ void TestHistoryRepository::loadsMatchesAndTournamentsNewestFirst()
         "startedAt": "2026-07-26T11:00:00.000+02:00",
         "finishedAt": "2026-07-26T12:00:00.000+02:00",
         "tournament": {
+            "format": "round_robin",
+            "participants": [
+                {"id": "stockfish", "player": {"name": "Stockfish"}},
+                {"id": "dragon", "player": {"name": "Dragon"}},
+                {"id": "leela", "player": {"name": "Leela"}}
+            ],
             "player1": {"name": "Stockfish"},
             "player2": {"name": "Dragon"},
             "game": {
@@ -89,7 +95,12 @@ void TestHistoryRepository::loadsMatchesAndTournamentsNewestFirst()
             "completedGames": 2,
             "player1Wins": 1,
             "player2Wins": 0,
-            "draws": 1
+            "draws": 1,
+            "standings": [
+                {"participantId": "stockfish", "name": "Stockfish", "wins": 1, "losses": 0, "draws": 1, "points": 1.5, "sequence": "1="},
+                {"participantId": "dragon", "name": "Dragon", "wins": 0, "losses": 1, "draws": 1, "points": 0.5, "sequence": "0="},
+                {"participantId": "leela", "name": "Leela", "wins": 0, "losses": 0, "draws": 0, "points": 0.0, "sequence": ""}
+            ]
         },
         "games": [{
             "gameNumber": 1,
@@ -124,8 +135,16 @@ void TestHistoryRepository::loadsMatchesAndTournamentsNewestFirst()
     QCOMPARE(tournament.type, HistorySessionType::Tournament);
     QCOMPARE(tournament.player1, QStringLiteral("Stockfish"));
     QCOMPARE(tournament.player2, QStringLiteral("Dragon"));
+    QCOMPARE(tournament.participants,
+             QStringList({QStringLiteral("Stockfish"),
+                          QStringLiteral("Dragon"),
+                          QStringLiteral("Leela")}));
+    QCOMPARE(tournament.tournamentFormat,
+             QStringLiteral("Round-robin"));
     QCOMPARE(tournament.totalGames, 2);
     QCOMPARE(tournament.completedGames, 2);
+    QCOMPARE(tournament.standings.size(), 3);
+    QCOMPARE(tournament.standings.first().points, 1.5);
     QCOMPARE(tournament.games.size(), 1);
     QCOMPARE(tournament.games.first().openingName,
              QStringLiteral("Italian Game"));

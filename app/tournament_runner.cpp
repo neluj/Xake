@@ -32,6 +32,22 @@ QJsonObject playerToJson(const PlayerConfig& player)
     return object;
 }
 
+QJsonObject standingToJson(const TournamentStanding& standing)
+{
+    QJsonObject object;
+    object["participantId"] = standing.participantId;
+    object["name"] = standing.name;
+    object["games"] = standing.games();
+    object["wins"] = standing.wins;
+    object["losses"] = standing.losses;
+    object["draws"] = standing.draws;
+    object["points"] = standing.points();
+    object["whiteGames"] = standing.whiteGames;
+    object["blackGames"] = standing.blackGames;
+    object["sequence"] = standing.sequence;
+    return object;
+}
+
 QJsonObject summaryToJson(const TournamentSummary& summary)
 {
     QJsonObject object;
@@ -42,6 +58,11 @@ QJsonObject summaryToJson(const TournamentSummary& summary)
     object["draws"] = summary.draws;
     object["whiteWins"] = summary.whiteWins;
     object["blackWins"] = summary.blackWins;
+    QJsonArray standings;
+    for (const TournamentStanding& standing : summary.standings) {
+        standings.append(standingToJson(standing));
+    }
+    object["standings"] = standings;
     return object;
 }
 
@@ -76,6 +97,11 @@ QJsonObject gameRecordToJson(const TournamentGameRecord& record)
 {
     QJsonObject object;
     object["gameNumber"] = record.gameNumber;
+    object["roundNumber"] = record.roundNumber;
+    object["cycleNumber"] = record.cycleNumber;
+    object["gameInPairing"] = record.gameInPairing;
+    object["whiteParticipantId"] = record.whiteParticipantId;
+    object["blackParticipantId"] = record.blackParticipantId;
     object["status"] = record.completed ? QStringLiteral("completed")
                                         : record.aborted ? QStringLiteral("aborted")
                                                          : QStringLiteral("in_progress");
@@ -136,6 +162,8 @@ TournamentRunner::TournamentRunner(GameController *gameController, QObject *pare
             this, &TournamentRunner::handleGameAborted);
     connect(m_gameController, &GameController::movePlayed,
             this, &TournamentRunner::handleMovePlayed);
+    connect(m_gameController, &GameController::engineFailureOccurred,
+            this, &TournamentRunner::handleEngineFailure);
 }
 
 bool TournamentRunner::start(const TournamentConfig& config,
@@ -153,17 +181,25 @@ bool TournamentRunner::start(const TournamentConfig& config,
         return false;
     }
 
-    const qint64 totalGames = static_cast<qint64>(normalized.rounds)
-        * normalized.gamesPerPairing;
-    if (totalGames < 1 || totalGames > std::numeric_limits<int>::max()) {
+    const TournamentScheduleResult schedule =
+        buildTournamentSchedule(normalized);
+    if (!schedule.succeeded()) {
         return false;
     }
 
     m_config = normalized;
+    m_schedule = schedule.games;
     m_openings = openings;
     m_logDir = logDir;
     m_sessionTag = sessionTag;
-    m_summary = TournamentSummary{static_cast<int>(totalGames)};
+    m_summary = TournamentSummary{};
+    m_summary.totalGames = m_schedule.size();
+    for (const TournamentParticipant& participant : m_config.participants) {
+        m_summary.standings.append({
+            participant.id,
+            pgnPlayerName(participant.player)
+        });
+    }
     m_gameRecords.clear();
     m_reportFilePath = m_logDir.isEmpty()
         ? QString()
@@ -176,12 +212,15 @@ bool TournamentRunner::start(const TournamentConfig& config,
     m_finishedAtIso.clear();
     m_abortTitle.clear();
     m_abortMessage.clear();
-    m_nextGameNumber = 1;
+    m_nextScheduleIndex = 0;
     m_currentGameNumber = 0;
+    m_currentScheduledGame = TournamentScheduledGame{};
     m_currentColorsSwapped = false;
     m_active = true;
     m_paused = false;
     m_waitingForNextGame = false;
+    m_waitingForHumanGame = false;
+    m_failedEngineSide = -1;
     m_reportErrorEmitted = false;
     m_pgnErrorEmitted = false;
     ++m_runGeneration;
@@ -222,6 +261,13 @@ bool TournamentRunner::resume()
     } else if (m_waitingForNextGame) {
         m_waitingForNextGame = false;
         startNextGame();
+    } else if (m_waitingForHumanGame) {
+        if (const TournamentGameRecord *current =
+                currentGameRecord()) {
+            emit humanGameReadyRequested(
+                m_currentGameNumber, m_summary.totalGames,
+                current->match);
+        }
     }
     persistReport();
     emit pauseChanged(false);
@@ -238,6 +284,7 @@ bool TournamentRunner::stop()
     m_active = false;
     m_paused = false;
     m_waitingForNextGame = false;
+    m_waitingForHumanGame = false;
     ++m_runGeneration;
     m_status = QStringLiteral("aborted");
     m_finishedAtIso = currentTimestamp();
@@ -246,7 +293,10 @@ bool TournamentRunner::stop()
 
     if (TournamentGameRecord *current = currentGameRecord();
         current && !current->completed) {
-        current->moves = m_gameController->moveHistoryUci();
+        if (m_gameController->isActive()) {
+            current->moves = m_gameController->moveHistoryUci();
+            current->moveRecords = m_gameController->moveRecords();
+        }
         current->aborted = true;
         current->termination = GameTermination::Stopped;
         current->finishedAtIso = m_finishedAtIso;
@@ -272,6 +322,27 @@ bool TournamentRunner::isActive() const
 bool TournamentRunner::isPaused() const
 {
     return m_paused;
+}
+
+void TournamentRunner::setHumanGameConfirmationEnabled(bool enabled)
+{
+    m_humanGameConfirmationEnabled = enabled;
+}
+
+bool TournamentRunner::startPendingHumanGame()
+{
+    if (!m_active || m_paused || !m_waitingForHumanGame) {
+        return false;
+    }
+
+    m_waitingForHumanGame = false;
+    launchCurrentGame();
+    return true;
+}
+
+bool TournamentRunner::isWaitingForHumanGame() const
+{
+    return m_active && m_waitingForHumanGame;
 }
 
 TournamentSummary TournamentRunner::summary() const
@@ -304,18 +375,33 @@ void TournamentRunner::startNextGame()
     if (!m_active || m_paused) {
         return;
     }
-    if (m_nextGameNumber > m_summary.totalGames) {
+    if (m_nextScheduleIndex >= m_schedule.size()) {
         finishTournament();
         return;
     }
 
-    m_currentGameNumber = m_nextGameNumber++;
-    m_currentColorsSwapped = colorsAreSwappedForCurrentGame();
-    const MatchConfig match = matchForCurrentGame();
-    const OpeningEntry& opening = openingForCurrentGame();
+    m_currentScheduledGame = m_schedule.at(m_nextScheduleIndex++);
+    m_currentGameNumber = m_currentScheduledGame.gameNumber;
+    const MatchConfig match =
+        matchForScheduledGame(m_currentScheduledGame);
+    const OpeningEntry& opening =
+        openingForScheduledGame(m_currentScheduledGame);
+    m_currentColorsSwapped =
+        m_config.participants.size() >= 2
+        && m_currentScheduledGame.whiteParticipantId
+            == m_config.participants.at(1).id
+        && m_currentScheduledGame.blackParticipantId
+            == m_config.participants.at(0).id;
 
     TournamentGameRecord record;
     record.gameNumber = m_currentGameNumber;
+    record.roundNumber = m_currentScheduledGame.roundNumber;
+    record.cycleNumber = m_currentScheduledGame.cycleNumber;
+    record.gameInPairing = m_currentScheduledGame.gameInPairing;
+    record.whiteParticipantId =
+        m_currentScheduledGame.whiteParticipantId;
+    record.blackParticipantId =
+        m_currentScheduledGame.blackParticipantId;
     record.match = match;
     record.startedAtIso = currentTimestamp();
     record.colorsSwapped = m_currentColorsSwapped;
@@ -329,15 +415,45 @@ void TournamentRunner::startNextGame()
 
     emit tournamentGameStarted(m_currentGameNumber, m_summary.totalGames, match);
 
+    const bool hasHuman =
+        match.player1.type == PlayerType::Human
+        || match.player2.type == PlayerType::Human;
+    if (m_humanGameConfirmationEnabled && hasHuman) {
+        m_waitingForHumanGame = true;
+        persistReport();
+        emit humanGameReadyRequested(
+            m_currentGameNumber, m_summary.totalGames, match);
+        return;
+    }
+
+    launchCurrentGame();
+}
+
+void TournamentRunner::launchCurrentGame()
+{
+    if (!m_active || m_paused || m_currentGameNumber == 0) {
+        return;
+    }
+
+    TournamentGameRecord *current = currentGameRecord();
+    if (!current) {
+        return;
+    }
+    const OpeningEntry& opening =
+        openingForScheduledGame(m_currentScheduledGame);
     const QString gameTag = QStringLiteral("%1_game%2")
         .arg(m_sessionTag)
         .arg(m_currentGameNumber, 3, 10, QChar('0'));
-    if (!m_gameController->startMatch(match,
+    if (!m_gameController->startMatch(current->match,
                                       opening.startFen.toStdString(),
                                       m_logDir,
                                       gameTag,
                                       m_config.maxMoves,
                                       opening.movesUci)) {
+        if (current->completed) {
+            return;
+        }
+
         m_active = false;
         m_status = QStringLiteral("aborted");
         m_finishedAtIso = currentTimestamp();
@@ -380,36 +496,93 @@ void TournamentRunner::handleGameFinished(const GameResult& result)
         return;
     }
 
-    if (TournamentGameRecord *current = currentGameRecord()) {
-        current->completed = true;
-        current->result = result;
-        current->termination = result.termination;
-        current->finishedAtIso = currentTimestamp();
-        current->moves = m_gameController->moveHistoryUci();
-        current->moveRecords = m_gameController->moveRecords();
+    completeCurrentGame(result);
+}
+
+void TournamentRunner::handleEngineFailure(EngineFailure,
+                                           EngineSide side,
+                                           const QString&)
+{
+    if (m_active && m_currentGameNumber != 0) {
+        m_failedEngineSide =
+            side == EngineSide::White ? 0 : 1;
+    }
+}
+
+void TournamentRunner::completeCurrentGame(const GameResult& result)
+{
+    TournamentGameRecord *current = currentGameRecord();
+    if (!m_active || !current || current->completed) {
+        return;
     }
 
+    current->completed = true;
+    current->aborted = false;
+    current->result = result;
+    current->termination = result.termination;
+    current->finishedAtIso = currentTimestamp();
+    current->moves = m_gameController->moveHistoryUci();
+    current->moveRecords = m_gameController->moveRecords();
+    m_waitingForHumanGame = false;
+    m_failedEngineSide = -1;
+
     ++m_summary.completedGames;
+    TournamentStanding *white =
+        standing(current->whiteParticipantId);
+    TournamentStanding *black =
+        standing(current->blackParticipantId);
+    if (white) {
+        ++white->whiteGames;
+    }
+    if (black) {
+        ++black->blackGames;
+    }
+
+    QString winnerId;
     switch (result.outcome) {
     case GameOutcome::WhiteWin:
         ++m_summary.whiteWins;
-        if (m_currentColorsSwapped) {
-            ++m_summary.player2Wins;
-        } else {
-            ++m_summary.player1Wins;
+        winnerId = current->whiteParticipantId;
+        if (white) {
+            ++white->wins;
+            white->sequence += QLatin1Char('1');
+        }
+        if (black) {
+            ++black->losses;
+            black->sequence += QLatin1Char('0');
         }
         break;
     case GameOutcome::BlackWin:
         ++m_summary.blackWins;
-        if (m_currentColorsSwapped) {
-            ++m_summary.player1Wins;
-        } else {
-            ++m_summary.player2Wins;
+        winnerId = current->blackParticipantId;
+        if (black) {
+            ++black->wins;
+            black->sequence += QLatin1Char('1');
+        }
+        if (white) {
+            ++white->losses;
+            white->sequence += QLatin1Char('0');
         }
         break;
     case GameOutcome::Draw:
         ++m_summary.draws;
+        if (white) {
+            ++white->draws;
+            white->sequence += QLatin1Char('=');
+        }
+        if (black) {
+            ++black->draws;
+            black->sequence += QLatin1Char('=');
+        }
         break;
+    }
+
+    if (!winnerId.isEmpty() && m_config.participants.size() >= 2) {
+        if (winnerId == m_config.participants.at(0).id) {
+            ++m_summary.player1Wins;
+        } else if (winnerId == m_config.participants.at(1).id) {
+            ++m_summary.player2Wins;
+        }
     }
 
     persistReport();
@@ -434,10 +607,25 @@ void TournamentRunner::handleGameAborted(GameTermination termination,
         return;
     }
 
+    if (termination == GameTermination::EngineFailure
+        && m_failedEngineSide >= 0) {
+        const GameOutcome outcome =
+            m_failedEngineSide == 0
+            ? GameOutcome::BlackWin
+            : GameOutcome::WhiteWin;
+        completeCurrentGame({
+            outcome,
+            GameTermination::EngineFailure,
+            tr("%1 The opponent wins by forfeit.").arg(message)
+        });
+        return;
+    }
+
     const bool wasPaused = m_paused;
     m_active = false;
     m_paused = false;
     m_waitingForNextGame = false;
+    m_waitingForHumanGame = false;
     ++m_runGeneration;
     m_status = QStringLiteral("aborted");
     m_finishedAtIso = currentTimestamp();
@@ -460,13 +648,21 @@ void TournamentRunner::handleGameAborted(GameTermination termination,
     emit tournamentAborted(title, message);
 }
 
-MatchConfig TournamentRunner::matchForCurrentGame() const
+MatchConfig TournamentRunner::matchForScheduledGame(
+    const TournamentScheduledGame& game) const
 {
     MatchConfig match = m_config.match;
-    if (m_currentColorsSwapped) {
-        std::swap(match.player1, match.player2);
+    const TournamentParticipant *white =
+        participant(game.whiteParticipantId);
+    const TournamentParticipant *black =
+        participant(game.blackParticipantId);
+    if (white) {
+        match.player1 = white->player;
     }
-    const OpeningEntry& opening = openingForCurrentGame();
+    if (black) {
+        match.player2 = black->player;
+    }
+    const OpeningEntry& opening = openingForScheduledGame(game);
     match.game.useOpeningFile = false;
     match.game.openingFilePath.clear();
     match.game.useStartPos = false;
@@ -474,15 +670,34 @@ MatchConfig TournamentRunner::matchForCurrentGame() const
     return match;
 }
 
-const OpeningEntry& TournamentRunner::openingForCurrentGame() const
+const OpeningEntry& TournamentRunner::openingForScheduledGame(
+    const TournamentScheduledGame& game) const
 {
-    const int pairIndex = qMax(0, m_currentGameNumber - 1) / 2;
-    return m_openings.at(pairIndex % m_openings.size());
+    const int openingIndex =
+        qMax(0, game.openingGroup) % m_openings.size();
+    return m_openings.at(openingIndex);
 }
 
-bool TournamentRunner::colorsAreSwappedForCurrentGame() const
+const TournamentParticipant* TournamentRunner::participant(
+    const QString& participantId) const
 {
-    return (m_currentGameNumber % 2) == 0;
+    for (const TournamentParticipant& candidate : m_config.participants) {
+        if (candidate.id == participantId) {
+            return &candidate;
+        }
+    }
+    return nullptr;
+}
+
+TournamentStanding* TournamentRunner::standing(
+    const QString& participantId)
+{
+    for (TournamentStanding& candidate : m_summary.standings) {
+        if (candidate.participantId == participantId) {
+            return &candidate;
+        }
+    }
+    return nullptr;
 }
 
 void TournamentRunner::finishTournament()
@@ -556,7 +771,9 @@ bool TournamentRunner::writeTournamentPgn(QString* errorOut) const
         PgnGameRecord game;
         game.event = QStringLiteral("Xake tournament");
         game.date = pgnDate(record.startedAtIso);
-        game.round = QString::number(record.gameNumber);
+        game.round = QString::number(
+            record.roundNumber > 0
+                ? record.roundNumber : record.gameNumber);
         game.white = pgnPlayerName(record.match.player1);
         game.black = pgnPlayerName(record.match.player2);
         game.result = record.completed
@@ -594,8 +811,22 @@ bool TournamentRunner::writeReport(QString* errorOut) const
     tournament["rounds"] = m_config.rounds;
     tournament["gamesPerPairing"] = m_config.gamesPerPairing;
     tournament["maxMoves"] = m_config.maxMoves;
+    tournament["format"] =
+        m_config.format == TournamentFormat::Gauntlet
+        ? QStringLiteral("gauntlet")
+        : QStringLiteral("round_robin");
+    tournament["gauntletParticipantId"] =
+        m_config.gauntletParticipantId;
     tournament["player1"] = playerToJson(m_config.match.player1);
     tournament["player2"] = playerToJson(m_config.match.player2);
+    QJsonArray participants;
+    for (const TournamentParticipant& participant : m_config.participants) {
+        QJsonObject participantObject;
+        participantObject["id"] = participant.id;
+        participantObject["player"] = playerToJson(participant.player);
+        participants.append(participantObject);
+    }
+    tournament["participants"] = participants;
 
     QJsonObject gameSettings;
     gameSettings["timeControl"] = m_config.match.game.timeControl;
@@ -612,6 +843,7 @@ bool TournamentRunner::writeReport(QString* errorOut) const
     }
 
     QJsonObject root;
+    root["formatVersion"] = 2;
     root["sessionTag"] = m_sessionTag;
     root["status"] = m_status;
     root["startedAt"] = m_startedAtIso;

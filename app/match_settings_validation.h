@@ -14,7 +14,12 @@ enum class ValidationError {
     OpeningFileNotFound,
     UnsupportedOpeningFile,
     InvalidRounds,
-    InvalidGamesPerPairing
+    InvalidGamesPerPairing,
+    TooFewTournamentParticipants,
+    MissingTournamentParticipantName,
+    MissingTournamentParticipantEngine,
+    DuplicateTournamentParticipantName,
+    InvalidGauntletParticipant
 };
 
 void normalizeMatchConfig(MatchConfig &config);
