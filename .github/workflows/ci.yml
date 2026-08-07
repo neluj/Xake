@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -58,7 +58,7 @@ jobs:
           ./tools/test_windows_package.ps1 -PackageDirectory $packageDirectory
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Xake-0.4.0-Windows-AMD64
           path: |
